@@ -99,11 +99,11 @@ A pack is a set of named arrays (**channels**) plus a metadata object (§10). Ar
 | `compartment` | `(N_w, N_t)` | int16 | label | Compartment id of walker `i` at save `k`. Id **0 is the extra-cellular / free compartment by convention**; positive ids are producer-defined and described in metadata `per_comp`. | Relaxation |
 | `boundary_local_time` | `(N_w, N_t)` | float32 | m (see below) | Per-step accumulated wall-contact measure with **`ρ/D = 1`** (dimension of length ÷ diffusivity is folded so that replay multiplies by the desired `ρ/D`). See §6.3. | Surface |
 | `bound_fraction` | `(N_w, N_t)` | float32 | — ∈ [0,1] | Fraction of walker `i` bound to the restricted (macromolecular) pool at save `k`. | Exchange/MT |
-| `susc_field_C` | producer grid | float32 | dimensionless (per unit `Δχ`) | ℓ=2 cosine component of the substrate's normalized off-resonance field map. | Field |
-| `susc_field_S` | producer grid | float32 | " | ℓ=2 sine component. | Field |
-| `susc_field_0` | producer grid | float32 | " | m=0 (monopole/mean) component. | Field |
+| `susc_field_0` | producer grid | float32 | per unit susceptibility | m=0 (isotropic / mean) component of the substrate's normalized off-resonance field map. | Field |
+| `susc_field_C` | producer grid | float32 | " | ℓ=2 cosine (anisotropic) component. | Field |
+| `susc_field_S` | producer grid | float32 | " | ℓ=2 sine (anisotropic) component. | Field |
 
-Field-map channels are accompanied by the metadata keys `walk_params.cell_size` (grid spacing, m) and `walk_params.delta_chi_a` (the anisotropic susceptibility scale `Δχ`) and, where the substrate is oriented, a per-compartment rotation in `per_comp.R`.
+Field-map channels are **normalized off-resonance basis maps** (§6.4): `susc_field_0` carries the isotropic part and `susc_field_{C,S}` the axially-anisotropic part, so the tier supports isotropic and/or anisotropic susceptibility (a fully general susceptibility tensor is a §14 extension). They are accompanied by `walk_params.cell_size` (grid spacing, m), the susceptibility scale(s) the maps are normalized to (the reference implementation stores the anisotropic scale as `walk_params.delta_chi_a`), and, where the substrate is oriented, per-compartment rotations in `per_comp.R` (each a 3×3 mapping the compartment's local frame to the lab frame).
 
 A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_temperature`). Replayers **MUST** ignore unknown channels they do not implement (§14).
 
@@ -156,20 +156,43 @@ log W_i += − (ρ / D) · Σ_k ℓ_i(t_k) .
 
 Because the channel is stored normalized, one walk serves every `ρ`. This is a replay knob; `ρ = 0` recovers §6.2.
 
-### 6.4 Susceptibility / static off-resonance (Field tier)
+### 6.4 Static off-resonance / susceptibility (Field tier)
 
-Given the normalized field-map components `{Φ_C, Φ_S, Φ_0}`, a field strength `B0`, a substrate orientation `θ` relative to `B0`, and an anisotropic scale `Δχ = delta_chi_a`, the off-resonance experienced by walker `i` at `t_k` is sampled from the maps at the walker's *wrapped* position `r_i(t_k) mod cell_size`:
+The Field tier stores a set of **normalized off-resonance field-basis maps** the producer precomputes for the substrate. The reference set is `{Φ_0, Φ_C, Φ_S}`: `Φ_0` is the isotropic (m=0) component and `Φ_C, Φ_S` are the ℓ=2 (cylindrically anisotropic) components. Together they represent an **isotropic and/or axially-anisotropic** susceptibility source — not only anisotropic. A fully general rank-2 susceptibility-tensor field is a documented extension requiring a richer basis set (§14).
+
+At replay, for a field strength `B0`, a substrate orientation `θ` relative to `B0`, an azimuth `α`, and the susceptibility scale(s) `Δχ` the maps are normalized to, the off-resonance seen by walker `i` is sampled from the maps at the *wrapped* position `r_i(t_k) mod cell_size`:
 
 ```
-Δω_i(t_k) = γ · B0 · Δχ · [ Φ_0(r) + sin²θ·(cos2α·Φ_C(r) + sin2α·Φ_S(r)) ]      (reference form)
-φ^χ_i     = Σ_k ε_k · Δω_i(t_k) · Δt
+Δω_i(t_k) = γ · B0 · [ χ_iso · Φ_0(r)  +  χ_aniso · sin²θ · (cos2α·Φ_C(r) + sin2α·Φ_S(r)) ]
 ```
 
-where `ε_k ∈ {+1, −1}` is the spin-echo refocusing sign, **which MUST flip at `TE/2`** (a static-field refocusing requirement; see §8.4). The susceptibility phase adds to the gradient phase inside the same exponential (`φ_i → φ_i + φ^χ_i`), so their covariance — the diffusion×susceptibility cross-term — is preserved. Field strength and orientation are replay knobs; one walk serves any `(B0, θ)`.
+`χ_iso` and `χ_aniso` are the isotropic and anisotropic susceptibility scales (the reference implementation exposes the anisotropic scale as `walk_params.delta_chi_a`; a purely isotropic source uses `Φ_0` alone).
+
+The off-resonance contributes to the signal only through the **acquisition's phase history**, which is a replay knob (§6.6). The replayer supplies a per-step transverse-phase gate `s(t_k)` derived from the pulse sequence, and
+
+```
+φ^χ_i = Σ_k s(t_k) · Δω_i(t_k) · Δt ,      φ_i → φ_i + φ^χ_i
+```
+
+The susceptibility phase adds to the gradient phase inside the *same* exponential, so the diffusion×susceptibility covariance (the cross-term) is preserved. Field strength, orientation, susceptibility scale, and sequence are all knobs; one walk serves any combination.
 
 ### 6.5 Magnetization transfer / exchange (Exchange tier)
 
-With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a vector-Bloch replay (the scalar log-weight engine cannot represent an `M_z` reservoir). Saturation transfer is *emergent* (RF rotates bound spins). The bound-pool parameters are replay knobs. See the reference implementation for the Bloch–McConnell blend.
+With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a **vector-Bloch replay** — RF pulses act as rotations of the magnetization vector, which the scalar log-weight model cannot represent (it has no `M_z` reservoir). Saturation transfer is *emergent*. The bound-pool parameters are replay knobs. This same vector-Bloch path is the general route for *arbitrary RF* (§6.6). See the reference implementation for the Bloch–McConnell blend.
+
+### 6.6 The acquisition is a replay knob (no sequence is baked into the pack)
+
+A pack stores **no** assumption about the pulse sequence. The full acquisition — the gradient waveform `G(t)` **and** the RF (flip angles, refocusing, storage) — is supplied at replay. This is what makes one walk serve GRE, spin-echo, CPMG, stimulated-echo/PGSTE, and arbitrary sequences alike.
+
+For the **scalar-phase tiers** (§6.1, §6.4) the sequence enters through a per-step **transverse-phase gate** `s(t_k)` that the replayer derives from the sequence:
+
+- `s ≡ +1` — gradient echo (GRE), no refocusing;
+- `s` flips sign at each 180° refocusing pulse — spin echo, CPMG;
+- `s = 0` while magnetization is stored along `z` — stimulated echo (STE/PGSTE);
+
+so `s(t_k) ∈ {−1, 0, +1}` in the common cases. The **gradient phase (§6.1)** already encodes any bipolar/refocused *gradient* structure in the waveform's polarity and needs no gate; the gate applies to the **static off-resonance** term (§6.4), which a refocusing pulse inverts and a storage period freezes. (The transverse/longitudinal indicator `χ_k` of §6.2 is the same idea for relaxation.)
+
+Arbitrary RF — non-180° flips, adiabatic pulses, MT saturation — cannot be reduced to a scalar sign and requires the **vector-Bloch replay** (§6.5). A conformant replayer MAY implement only the scalar-gate model; it MUST then **refuse** acquisitions that need full Bloch evolution rather than approximate them (§13).
 
 ---
 
@@ -177,17 +200,19 @@ With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-reso
 
 A producer that models only part of the physics still emits a **fully interoperable** pack; it simply declares fewer tiers. Tiers are **independent** — a pack MAY declare Field without Relaxation.
 
-| Tier | Required channels (beyond `positions`) | Replay unlocked | Metadata flag |
+Metadata flags use **explicit, self-describing names** (§10).
+
+| Tier | Required channels (beyond `positions`) | Replay unlocked | Metadata flag(s) |
 |---|---|---|---|
 | **T0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
-| **T1 Relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `T1T2: true` |
-| **T2 Surface** | `boundary_local_time` | §6.3 — any `ρ` | `rho: true` |
-| **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`,`delta_chi_a`) | §6.4 — any `B0`, orientation | `B0_any: true`, `orientation_any: true` |
-| **T4 Exchange** | `bound_fraction` | §6.5 — MT/exchange | `mt: true` |
+| **T1 Relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `relaxation: true` |
+| **T2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
+| **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, orientation, susceptibility | `field_offresonance: true`, `field_orientation: true` |
+| **T4 Exchange** | `bound_fraction` | §6.5 — MT/exchange (vector-Bloch) | `magnetization_transfer: true` |
 
 The declared tier set lives in `replay_envelope` (§10). A replayer asked for a knob outside the declared tiers MUST refuse with a clear "capability not present" error, **not** silently return an approximate result (§11, §13).
 
-*Note on `permeability`.* Membrane permeability changes the trajectory (a crossing depends on a per-event random draw), so it is **not** a pure replay knob: a pack is walked at one permeability, recorded as fixed in metadata (`replay_envelope.permeability: false` meaning "not a free knob"). Varying permeability requires new walks.
+*On membrane permeability (out of scope in `1.x`).* Permeability changes the **trajectory** (a crossing is a per-event random draw), so it is not a replay knob at all — a pack is walked at one permeability and varying it requires new walks. The `1.x` envelope therefore does **not** carry a permeability flag; the fixed value the walk used SHOULD be recorded under `provenance`. If a future version finds a way to make crossing a replayable quantity, it will be added as a new tier (§14).
 
 ---
 
@@ -204,8 +229,8 @@ MUST store **unwrapped** lab-frame positions. If the walk used a periodic cell, 
 ### 8.3 TE-prefix consistency
 MUST ensure the save grid is uniform and that any leading prefix is itself a converged walk to that shorter time (§3). Producers MUST NOT reorder or subsample walkers across the save axis.
 
-### 8.4 Refocusing time
-For Field-tier packs, the producer MUST document the encoding so that a replayer can place the `TE/2` sign flip (§6.4); the reference convention is a single 180° at `TE/2`.
+### 8.4 No sequence assumption
+A producer MUST NOT bake any pulse-sequence choice into the pack. The acquisition (gradients and RF) is applied at replay (§6.6); the producer's obligation is only to store the trajectory (and any tier channels) over the full walk to `T_max`. In particular there is no "refocusing time" a producer must record — refocusing is a property of the replayed sequence, not of the walk.
 
 ### 8.5 Compartment convention
 MUST use id `0` for the extra-cellular/free pool and MUST list every other id with its `(T2, T1[, R])` in `per_comp`.
@@ -220,43 +245,20 @@ MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST a
 
 ## 9. Codecs and compression (orthogonal layer)
 
-**The format does not depend on compression.** Every channel is defined by its *decoded* array (§5). How that array is *stored* is a per-channel **codec** choice recorded in metadata `compression`. The identity codec — the raw array — is always valid, and a pack stored entirely with identity codecs is fully conformant.
+**The format does not depend on compression.** Every channel is defined by its *decoded* array (§5). How that array is *stored* is a per-channel **codec** choice. The identity codec — the raw array — is the normative baseline, and a pack stored entirely with identity codecs is fully conformant. This section defines only the codec **interface**; the concrete codecs and their exact stored-key layouts live in a separate, independently versioned document, [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md), so that new compression methods (some still being developed) can be added without touching this frozen core.
 
-### 9.1 Codec descriptor
-Each compressed channel carries a codec name and parameters in `compression` (e.g. `{"method": "lowrank", "K": 64, "walker_preserving": true}`). A replayer MUST decode to the array contract of §5 before applying §6. Unknown codecs → the replayer MUST refuse (not guess).
+A conformant codec MUST satisfy four rules:
 
-### 9.2 Codec classes (informative)
-Reference codecs in the dmipy-sim implementation:
-- **identity** — raw positions (default; lossless).
-- **temporal_dct** — temporal band-limit; walker-preserving; lossless in-band.
-- **lowrank** — KL/SVD modes + exact coefficients; walker-preserving; the lossless-to-floor tier.
-- **gaussian / marginal** — distributional (resample walkers); *not* walker-preserving, therefore **Gradient/EAP tier only** (they break per-walker channel alignment and MUST set the tier flags accordingly).
+1. **Declared.** The codec is named (with any parameters) in metadata `compression`, e.g. `{"method": "identity"}` or `{"method": "lowrank", "K": 64, "walker_preserving": true}`. A replayer that does not recognize the `method` MUST refuse (never guess). Recognized method names and their stored tensor keys are defined in the registry.
+2. **Decodes to the contract.** Decoding MUST yield the exact channel array of §5 (dtype/shape/units). Channel *presence* for tiers (§7) and conformance (§13) is satisfied by the channel's raw key **or** the registry-defined stored keys of its codec.
+3. **Identity is the baseline.** `identity` (the raw array under its channel name) is always valid and lossless, and every replayer MUST support it.
+4. **Lossy ⇒ self-certified.** A pack using any lossy codec MUST include a `fidelity` object reporting the maximum decoded-vs-raw replay error over a declared **acquisition battery**, measured against the **split-half Monte-Carlo noise floor** (the ensemble split into two *random* halves — random because walkers are typically seeded in compartment order). The convention: "lossless to the noise floor" means `err_max ≤ tol · floor_max` (reference `tol = 2`). Lossless codecs SHOULD report `err_max = 0`.
 
-Only **walker-preserving** codecs may accompany the per-walker channels (`compartment`, `boundary_local_time`, `bound_fraction`, `spin_weights`); a distributional codec forces a Gradient-only pack.
+One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
 
-### 9.3 Fidelity self-report (REQUIRED for lossy codecs)
-A pack using any lossy codec MUST include a `fidelity` object reporting the maximum replay error of decoded-vs-raw channels over a declared **acquisition battery**, measured against the **split-half MC noise floor** (the ensemble split into two random halves — a *random* permutation, because walkers are typically seeded in compartment order). The convention: a codec is "lossless to the noise floor" when `err_max ≤ tol · floor_max` (reference `tol = 2`). Lossless (identity/dct/lowrank-at-full-rank) codecs SHOULD report `err_max = 0`.
+> **Walker-preserving requirement.** A codec that **resamples walkers** (a *distributional* codec — it stores a coefficient *distribution*, not per-walker coefficients) breaks per-walker channel alignment. Such a pack **MUST NOT** carry any per-walker channel (`compartment`, `boundary_local_time`, `bound_fraction`, `spin_weights`) and **MUST** declare only the Gradient tier. Per-walker channels REQUIRE a walker-preserving codec.
 
-Compression is thus a *quality claim about a channel*, never a change to the replay contract.
-
-### 9.4 Reserved storage keys
-
-A codec MAY replace a channel's single decoded array with several **reserved sub-arrays** under fixed tensor keys. **Channel presence** (for tiers, §7, and conformance, §13) is satisfied by the raw key **or** the codec's sub-arrays. The reference codecs use:
-
-| Decoded channel | Codec | Stored tensor keys |
-|---|---|---|
-| `positions` | identity | `positions` |
-| `positions` | `temporal_dct` | `dct_coeffs` |
-| `positions` | `lowrank` (walker-preserving) | `modes`, `mean`, `coeffs` |
-| `positions` | `gaussian` (distributional) | `modes`, `mean`, `coeff_mean`, `coeff_cov` |
-| `positions` | `marginal` (distributional) | `modes`, `mean`, `coeff_quantiles` |
-| `compartment` | RLE (row run-length) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` |
-| `spin_weights` | identity | `spin_weights` |
-| `boundary_local_time` | identity | `dlog_boundary_unit` |
-| `bound_fraction` | identity | `bound_frac` |
-| `susc_field_{C,S,0}` | identity | `susc_field_C`, `susc_field_S`, `susc_field_0` |
-
-A **distributional** positions codec (`gaussian`, `marginal` — recognizable by `coeff_mean`/`coeff_cov`/`coeff_quantiles`) resamples walkers and therefore breaks per-walker alignment: such a pack **MUST NOT** carry the per-walker channels (`compartment`, `boundary_local_time`, `bound_fraction`, `spin_weights`) and **MUST** declare only the Gradient tier. New codecs MUST document their reserved keys before use.
+Compression is thus a *quality claim about a channel*, never a change to the replay contract. See `CODEC_REGISTRY.md` for the current registered codecs (`identity`, and reference-implementation methods) and their stored-key tables.
 
 ---
 
@@ -273,34 +275,43 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "dt_traj": 2.65e-4, "T_max": 0.053,  // s
     "diffusivity": 0.6e-9,               // m^2/s, FIXED (not a knob)
     "seed": 0,
-    "cell_size": 5e-6,                   // m, present iff Field tier
-    "delta_chi_a": -0.1e-6               // present iff Field tier
+    "cell_size": 5e-6,                   // m, field-map grid spacing; present iff Field tier
+    "delta_chi_a": -0.1e-6               // anisotropic susceptibility scale the Field maps
+                                         //   are normalized to; present iff Field tier
   },
-  "per_comp": {                          // REQUIRED iff Relaxation tier; else nulls
-    "T2": [0.08, 0.05], "T1": [1.0, 0.8], "R": null   // index = compartment id
+  "per_comp": {                          // REQUIRED iff Relaxation tier; else null
+    "T2": [0.08, 0.05],                  // s, index = compartment id (0 = extra/free)
+    "T1": [1.0, 0.8],                    // s
+    "R": null                            // OPTIONAL 3x3 rotation(s) mapping each compartment's
+                                         //   local frame -> lab frame, used to orient the
+                                         //   anisotropic Field maps (§6.4); null if unoriented
   },
-  "compression": {                       // REQUIRED
+  "compression": {                       // REQUIRED — codec descriptor (see CODEC_REGISTRY.md)
     "method": "lowrank", "K": 64, "walker_preserving": true
   },
-  "replay_envelope": {                   // REQUIRED — the declared capability + domain
-    "gradient": true, "rf": true,
-    "T1T2": true, "rho": false, "mt": false,
-    "B0_any": true, "orientation_any": true,
-    "permeability": false, "diffusivity_fixed": true,
+  "replay_envelope": {                   // REQUIRED — declared capabilities + domain
+    "gradient": true,                    // T0 — always true
+    "relaxation": true,                  // T1 — per-compartment T1/T2
+    "surface_relaxivity": false,         // T2 — any surface relaxivity
+    "field_offresonance": true,          // T3 — any B0 / susceptibility off-resonance
+    "field_orientation": true,           // T3 — any substrate orientation w.r.t. B0
+    "magnetization_transfer": false,     // T4 — MT/exchange (vector-Bloch)
+    "diffusivity_fixed": true,           // D is a fixed pack property, not a knob
     "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0] }
   },
-  "fidelity": {                          // REQUIRED iff any lossy codec
+  "fidelity": {                          // REQUIRED iff any lossy codec (§9)
     "err_max": 0.0015, "floor_max": 0.0074, "within_2x_floor": true,
     "battery": "..." },
   "provenance": {                        // RECOMMENDED — how the walk was made
     "generator": "dmipy-sim", "generator_version": "...",
-    "geometry": "PackedMyelinatedCylinders", "real_or_synthetic": "synthetic" },
-  "license": "CC-BY-4.0",                // REQUIRED — the SOURCE geometry's license
+    "geometry": "PackedMyelinatedCylinders", "real_or_synthetic": "synthetic",
+    "permeability": 0.0 },               // the FIXED permeability the walk used (§7), if any
+  "license": "CC-BY-4.0",                // REQUIRED — the SOURCE substrate's license
   "citation": "Fick RHJ, dmrai-lab (2026) ..."   // REQUIRED
 }
 ```
 
-Rules: `diffusivity` and `seed` are fixed pack properties. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present and its `per_comp`/`walk_params` fields populated.
+Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2→relaxation`, `rho→surface_relaxivity`, `B0_any→field_offresonance`, `orientation_any→field_orientation`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags).
 
 ---
 
@@ -317,7 +328,7 @@ The substrate bank (a separate service) accepts a pack by validating it against 
 
 ## 12. Container format
 
-- **Arrays:** a single **safetensors** file. Safetensors is REQUIRED because it (a) carries **no executable code** — a pack is safe to download and memory-map from untrusted sources — (b) is strongly typed, and (c) is zero-copy. Channel names are the safetensors tensor keys; codec-produced sub-arrays use the reserved suffixes documented by the codec (e.g. `positions` may be replaced by `pos_modes`, `pos_coeff` for `lowrank`).
+- **Arrays:** a single **safetensors** file. Safetensors is REQUIRED because it (a) carries **no executable code** — a pack is safe to download and memory-map from untrusted sources — (b) is strongly typed, and (c) is zero-copy. Under the identity codec each channel is one tensor under its channel name (§5); under another codec a channel's tensor keys are those the registry defines for that method (`CODEC_REGISTRY.md`).
 - **Metadata:** the JSON object of §10, serialized as a single string and stored in the safetensors `__metadata__` header under the key **`"rpk"`**. Producers MUST write it there; a sibling `.json` copy is OPTIONAL for human inspection. *Compatibility:* across the `1.x` line a reader MUST also accept the legacy header key `"json"` (used by the reference implementation before this spec fixed the canonical key); producers SHOULD migrate to `"rpk"`.
 - **Dataset sidecar (OPTIONAL):** a Croissant (`schema.org/Dataset` + MLCommons) `.croissant.jsonld` carrying `license`, `citation`, `provenance`, and `replay_envelope` for dataset-catalog interoperability.
 - **Extension:** `.rpk`. **Naming:** the file basename SHOULD equal the last path segment of `id`.

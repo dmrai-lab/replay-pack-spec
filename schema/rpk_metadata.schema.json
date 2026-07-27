@@ -28,7 +28,7 @@
         "diffusivity": {"type": ["number", "null"], "description": "Fixed free diffusivity (m^2/s). Not a knob."},
         "seed": {"type": "integer"},
         "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field tier."},
-        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale; present iff Field tier."}
+        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale the Field maps are normalized to (SPEC §6.4); present iff Field tier. A purely isotropic source uses susc_field_0 alone."}
       }
     },
     "per_comp": {
@@ -37,7 +37,7 @@
       "properties": {
         "T2": {"type": ["array", "null"], "items": {"type": "number"}},
         "T1": {"type": ["array", "null"], "items": {"type": "number"}},
-        "R": {"type": ["array", "null"], "description": "Optional per-compartment rotation(s)."}
+        "R": {"type": ["array", "null"], "description": "Optional per-compartment 3x3 rotation(s) mapping the compartment's local frame to the lab frame, used to orient the anisotropic Field maps (SPEC §6.4). null if unoriented."}
       }
     },
     "compression": {
@@ -56,23 +56,23 @@
     "replay_envelope": {
       "type": "object",
       "required": ["gradient", "diffusivity_fixed"],
-      "description": "Declared capability tiers and acquisition domain. A flagged tier MUST have its channels present.",
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/rho/B0_any/orientation_any/mt.",
+      "additionalProperties": true,
       "properties": {
-        "gradient": {"const": true},
-        "rf": {"type": "boolean"},
-        "T1T2": {"type": "boolean"},
-        "rho": {"type": "boolean"},
-        "mt": {"type": "boolean"},
-        "B0_any": {"type": "boolean"},
-        "orientation_any": {"type": "boolean"},
-        "permeability": {"type": "boolean", "description": "false = not a free knob (walked at fixed permeability)."},
-        "diffusivity_fixed": {"const": true},
+        "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
+        "relaxation": {"type": "boolean", "description": "T1: replays any per-compartment T2/T1."},
+        "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
+        "field_offresonance": {"type": "boolean", "description": "T3: replays any B0 / static susceptibility off-resonance."},
+        "field_orientation": {"type": "boolean", "description": "T3: replays any substrate orientation relative to B0."},
+        "magnetization_transfer": {"type": "boolean", "description": "T4: replays MT/exchange via vector-Bloch."},
+        "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
         "acquisition": {
           "type": "object",
+          "description": "Certified acquisition domain the producer stands behind.",
           "properties": {
             "b_max": {"type": "number", "description": "Max certified b-value (s/m^2)."},
             "ogse_periods": {"type": "array", "items": {"type": "number"}},
-            "B0_list": {"type": "array", "items": {"type": "number"}}
+            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."}
           }
         }
       }

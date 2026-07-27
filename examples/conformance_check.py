@@ -17,9 +17,9 @@ from safetensors import safe_open
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCHEMA = os.path.join(HERE, "..", "schema", "rpk_metadata.schema.json")
 
-# Channel presence is codec-aware (SPEC §9.4): a channel is "present" if its raw key OR
-# any of its codec sub-array key-groups are in the file. Each entry is a list of
-# alternatives; each alternative is the set of keys that together realize the channel.
+# Channel presence is codec-aware (SPEC §9): a channel is "present" if its raw key OR any of
+# its codec sub-array key-groups are in the file. These key-groups mirror CODEC_REGISTRY.md
+# (the living registry) — update them there and here together when a codec is added.
 CHANNEL_KEYS = {
     "positions": [["positions"], ["dct_coeffs"], ["modes", "coeffs"],
                   ["modes", "coeff_mean", "coeff_cov"], ["modes", "coeff_quantiles"]],
@@ -30,12 +30,16 @@ CHANNEL_KEYS = {
     "susc_field_C": [["susc_field_C"]], "susc_field_S": [["susc_field_S"]],
     "susc_field_0": [["susc_field_0"]],
 }
-TIER_CHANNELS = {          # replay_envelope flag -> channel(s) that MUST be present
-    "T1T2": ["compartment"],
-    "rho": ["boundary_local_time"],
-    "mt": ["bound_fraction"],
-    "B0_any": ["susc_field_C", "susc_field_S", "susc_field_0"],
+TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MUST be present
+    "relaxation": ["compartment"],
+    "surface_relaxivity": ["boundary_local_time"],
+    "magnetization_transfer": ["bound_fraction"],
+    "field_offresonance": ["susc_field_C", "susc_field_S", "susc_field_0"],
 }
+# pre-rename 1.x aliases accepted on read (SPEC §10)
+ENV_ALIASES = {"T1T2": "relaxation", "rho": "surface_relaxivity",
+               "B0_any": "field_offresonance", "orientation_any": "field_orientation",
+               "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
 LOSSLESS_CODECS = {"identity", "temporal_dct", "lowrank"}
 
@@ -43,6 +47,15 @@ LOSSLESS_CODECS = {"identity", "temporal_dct", "lowrank"}
 def _present(channel, keys):
     """True iff `channel` is realized by any codec key-group present in `keys`."""
     return any(all(k in keys for k in group) for group in CHANNEL_KEYS.get(channel, [[channel]]))
+
+
+def _norm_env(meta):
+    """replay_envelope with 1.x aliases folded onto the explicit names (SPEC §10)."""
+    env = dict(meta.get("replay_envelope", {}))
+    for old, new in ENV_ALIASES.items():
+        if old in env and new not in env:
+            env[new] = env[old]
+    return env
 
 
 def check(path):
@@ -81,29 +94,29 @@ def check(path):
     else:
         warns.append(f"codec {method!r}: positions shape checked only after decode")
 
-    # 3. tier flag ⇒ channels present (codec-aware)
-    env = meta.get("replay_envelope", {})
+    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 1.x aliases)
+    env = _norm_env(meta)
     for flag, chans in TIER_CHANNELS.items():
         if env.get(flag):
             missing = [c for c in chans if not _present(c, keys)]
             if missing:
                 errs.append(f"replay_envelope.{flag}=true but missing channel(s) {missing} (SPEC §7/§13)")
 
-    # 3b. distributional positions codec MUST NOT carry per-walker channels (SPEC §9.4)
+    # 3b. distributional positions codec MUST NOT carry per-walker channels (SPEC §9)
     if keys & DISTRIBUTIONAL_KEYS:
         bad = [c for c in ("compartment", "boundary_local_time", "bound_fraction", "spin_weights")
                if _present(c, keys)]
         if bad:
             errs.append(f"distributional codec carries per-walker channel(s) {bad}; "
-                        f"forbidden — such packs are Gradient-only (SPEC §9.4)")
-        if any(env.get(f) for f in ("T1T2", "rho", "mt")):
-            errs.append("distributional codec must declare Gradient tier only (SPEC §9.4)")
-    if env.get("T1T2") and not (meta.get("per_comp") or {}).get("T2"):
-        errs.append("T1T2 tier declared but per_comp.T2 absent (SPEC §10)")
-    if env.get("B0_any"):
+                        f"forbidden — such packs are Gradient-only (SPEC §9)")
+        if any(env.get(f) for f in ("relaxation", "surface_relaxivity", "magnetization_transfer")):
+            errs.append("distributional codec must declare Gradient tier only (SPEC §9)")
+    if env.get("relaxation") and not (meta.get("per_comp") or {}).get("T2"):
+        errs.append("relaxation tier declared but per_comp.T2 absent (SPEC §10)")
+    if env.get("field_offresonance"):
         wp = meta.get("walk_params", {})
-        if wp.get("cell_size") is None or wp.get("delta_chi_a") is None:
-            errs.append("Field tier declared but walk_params.cell_size/delta_chi_a absent (SPEC §7)")
+        if wp.get("cell_size") is None:
+            errs.append("field_offresonance tier declared but walk_params.cell_size absent (SPEC §7)")
 
     # 4. shared (N_w, N_t) across per-walker/per-save channels
     if "positions" in shapes and len(shapes["positions"]) == 3:
@@ -131,11 +144,11 @@ def main(path):
     with safe_open(path, framework="numpy") as f:
         _h = f.metadata() or {}
         meta = json.loads(_h.get("rpk") or _h.get("json") or "{}")
-    env = meta.get("replay_envelope", {})
+    env = _norm_env(meta)
     tiers = [name for name, on in [
-        ("T0-Gradient", env.get("gradient")), ("T1-Relaxation", env.get("T1T2")),
-        ("T2-Surface", env.get("rho")), ("T3-Field", env.get("B0_any")),
-        ("T4-Exchange", env.get("mt"))] if on]
+        ("T0-Gradient", env.get("gradient")), ("T1-Relaxation", env.get("relaxation")),
+        ("T2-Surface", env.get("surface_relaxivity")), ("T3-Field", env.get("field_offresonance")),
+        ("T4-Exchange", env.get("magnetization_transfer"))] if on]
     print(f"pack id:    {meta.get('id')}")
     print(f"schema:     {meta.get('rpk_schema_version')}  codec: {meta.get('compression', {}).get('method')}")
     print(f"tiers:      {', '.join(tiers) or '(none)'}")

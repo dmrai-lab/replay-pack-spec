@@ -12,6 +12,7 @@ Monte-Carlo simulator emit interoperable packs (even partial ones), served by a 
 reference replayer, and pooled in a public substrate bank.
 
 - **The spec:** [`SPEC.md`](SPEC.md) — the definitive, RFC-2119 document.
+- **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete compression codecs and their stored keys, versioned separately from the frozen core so new methods can be added without touching the format.
 - **Metadata schema:** [`schema/rpk_metadata.schema.json`](schema/rpk_metadata.schema.json).
 - **Examples:** [`examples/`](examples/) — a standalone writer + replayer (no dependencies
   beyond NumPy + safetensors), a conformance checker, and dmipy-sim interop.
