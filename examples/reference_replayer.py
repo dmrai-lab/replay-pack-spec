@@ -62,7 +62,7 @@ def replay_relaxation_logweight(arrays, meta, T2=None, T1=None, transverse=True)
     Requires the Relaxation tier. `T2`/`T1` are lists indexed by compartment id;
     default to `per_comp`. Returns (N_w,) log-weights (<=0)."""
     env = meta.get("replay_envelope", {})
-    if not (env.get("relaxation") or env.get("T1T2")):   # explicit name + 1.x alias
+    if not (env.get("bulk_relaxation") or env.get("relaxation") or env.get("T1T2")):  # +1.x aliases
         raise ValueError("pack does not declare the Relaxation tier; "
                          "capability not present (SPEC §7/§13).")
     comp = np.asarray(arrays["compartment"], np.int64)      # (N_w, N_t)

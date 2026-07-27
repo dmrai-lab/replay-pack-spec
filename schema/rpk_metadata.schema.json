@@ -33,7 +33,7 @@
     },
     "per_comp": {
       "type": ["object", "null"],
-      "description": "Per-compartment relaxation; index = compartment id (0 = extra/free). Required iff Relaxation tier.",
+      "description": "Per-compartment relaxation; index = compartment id (0 = extra/free). Required iff Bulk-relaxation tier.",
       "properties": {
         "T2": {"type": ["array", "null"], "items": {"type": "number"}},
         "T1": {"type": ["array", "null"], "items": {"type": "number"}},
@@ -56,11 +56,11 @@
     "replay_envelope": {
       "type": "object",
       "required": ["gradient", "diffusivity_fixed"],
-      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/rho/B0_any/orientation_any/mt.",
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any->field_offresonance, orientation_any->field_orientation, mt->magnetization_transfer.",
       "additionalProperties": true,
       "properties": {
         "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
-        "relaxation": {"type": "boolean", "description": "T1: replays any per-compartment T2/T1."},
+        "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
         "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
         "field_offresonance": {"type": "boolean", "description": "T3: replays any B0 / static susceptibility off-resonance."},
         "field_orientation": {"type": "boolean", "description": "T3: replays any substrate orientation relative to B0."},
@@ -94,7 +94,8 @@
         "generator": {"type": "string"},
         "generator_version": {"type": "string"},
         "geometry": {"type": "string"},
-        "real_or_synthetic": {"type": "string", "enum": ["real", "synthetic"]}
+        "real_or_synthetic": {"type": "string", "enum": ["real", "synthetic"]},
+        "permeability": {"type": ["number", "null"], "description": "Fixed membrane permeability the walk used (m/s); not a replay knob in 1.x (SPEC §7)."}
       }
     },
     "license": {"type": "string", "description": "License of the SOURCE substrate; never relicensed by this format."},

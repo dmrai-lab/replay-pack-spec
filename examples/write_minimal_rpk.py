@@ -37,7 +37,7 @@ def write_pack(path, positions, dt, D, seed, pack_id):
         "compression": {"method": "identity", "K": None, "walker_preserving": True},
         "replay_envelope": {
             "gradient": True,                 # T0 only
-            "relaxation": False, "surface_relaxivity": False,
+            "bulk_relaxation": False, "surface_relaxivity": False,
             "field_offresonance": False, "field_orientation": False,
             "magnetization_transfer": False, "diffusivity_fixed": True,
             "acquisition": {"b_max": 5.0e9, "ogse_periods": [], "B0_list": []},

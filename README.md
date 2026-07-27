@@ -33,7 +33,7 @@ Compression is an *orthogonal* per-channel codec layer (§9 of the spec).
 | Tier | Adds channel | Replays |
 |---|---|---|
 | **T0 Gradient** | `positions` (required) | any `G(t)`, b-tensor, EAP |
-| **T1 Relaxation** | `compartment` | any `T2`/`T1` |
+| **T1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **T2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
 | **T3 Field** | `susc_field_{C,S,0}` | any `B0`, orientation |
 | **T4 Exchange** | `bound_fraction` | magnetization transfer / exchange |

@@ -31,15 +31,15 @@ CHANNEL_KEYS = {
     "susc_field_0": [["susc_field_0"]],
 }
 TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MUST be present
-    "relaxation": ["compartment"],
+    "bulk_relaxation": ["compartment"],
     "surface_relaxivity": ["boundary_local_time"],
     "magnetization_transfer": ["bound_fraction"],
     "field_offresonance": ["susc_field_C", "susc_field_S", "susc_field_0"],
 }
 # pre-rename 1.x aliases accepted on read (SPEC §10)
-ENV_ALIASES = {"T1T2": "relaxation", "rho": "surface_relaxivity",
-               "B0_any": "field_offresonance", "orientation_any": "field_orientation",
-               "mt": "magnetization_transfer"}
+ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
+               "rho": "surface_relaxivity", "B0_any": "field_offresonance",
+               "orientation_any": "field_orientation", "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
 LOSSLESS_CODECS = {"identity", "temporal_dct", "lowrank"}
 
@@ -87,7 +87,7 @@ def check(path):
     # 2. required positions channel (codec-aware; shape only checkable for identity)
     method = meta.get("compression", {}).get("method", "identity")
     if not _present("positions", keys):
-        errs.append("missing required 'positions' channel / codec sub-arrays (SPEC §5.1/§9.4)")
+        errs.append("missing required 'positions' channel / codec sub-arrays (SPEC §5.1/§9)")
     elif method == "identity":
         if len(shapes["positions"]) != 3 or shapes["positions"][2] != 3:
             errs.append(f"positions shape {shapes['positions']} is not (N_w, N_t, 3)")
@@ -109,10 +109,10 @@ def check(path):
         if bad:
             errs.append(f"distributional codec carries per-walker channel(s) {bad}; "
                         f"forbidden — such packs are Gradient-only (SPEC §9)")
-        if any(env.get(f) for f in ("relaxation", "surface_relaxivity", "magnetization_transfer")):
+        if any(env.get(f) for f in ("bulk_relaxation", "surface_relaxivity", "magnetization_transfer")):
             errs.append("distributional codec must declare Gradient tier only (SPEC §9)")
-    if env.get("relaxation") and not (meta.get("per_comp") or {}).get("T2"):
-        errs.append("relaxation tier declared but per_comp.T2 absent (SPEC §10)")
+    if env.get("bulk_relaxation") and not (meta.get("per_comp") or {}).get("T2"):
+        errs.append("bulk_relaxation tier declared but per_comp.T2 absent (SPEC §10)")
     if env.get("field_offresonance"):
         wp = meta.get("walk_params", {})
         if wp.get("cell_size") is None:
@@ -146,7 +146,7 @@ def main(path):
         meta = json.loads(_h.get("rpk") or _h.get("json") or "{}")
     env = _norm_env(meta)
     tiers = [name for name, on in [
-        ("T0-Gradient", env.get("gradient")), ("T1-Relaxation", env.get("relaxation")),
+        ("T0-Gradient", env.get("gradient")), ("T1-BulkRelax", env.get("bulk_relaxation")),
         ("T2-Surface", env.get("surface_relaxivity")), ("T3-Field", env.get("field_offresonance")),
         ("T4-Exchange", env.get("magnetization_transfer"))] if on]
     print(f"pack id:    {meta.get('id')}")

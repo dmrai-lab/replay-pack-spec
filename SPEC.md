@@ -71,11 +71,50 @@ The invariant defines the boundary of the format. Anything a producer cannot rec
 
 ## 4. Conventions
 
-- **Units are SI.** Length in metres (m), time in seconds (s), magnetic field in tesla (T), gyromagnetic ratio `γ` in rad·s⁻¹·T⁻¹, gradient in T·m⁻¹.
+### 4.1 Units — SI everywhere, no implicit scale factors
+
+Two kinds of quantity carry units in this standard, both fixed to SI so that a pack from one generator reproduces **identically** under another implementation's replayer. A producer MUST convert from any internal units on write; a replayer MUST assume SI.
+
+**(a) Quantities stored in the pack** — the format proper.
+
+| Stored quantity | Symbol | Unit | Channel / field |
+|---|---|---|---|
+| position | `r` | **metre (m)** | `positions` (continuous lab frame, §4.2) |
+| save interval, echo time | `Δt`, `T_max` | second (s) | `dt_traj`, `T_max` |
+| diffusivity | `D` | m²·s⁻¹ | `walk_params.diffusivity` (fixed pack property, not a knob) |
+| boundary local time | `ℓ` | metre (m) | `boundary_local_time`, at `ρ/D = 1` (§6.3) |
+| relaxation times | `T1`, `T2` | second (s) | `per_comp` |
+| bound fraction, spin weight | `b_i`, `w_i` | dimensionless | `bound_fraction`, `spin_weights` |
+| field-map grid spacing | — | metre (m) | `walk_params.cell_size` |
+
+A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
+
+**(b) Replay-operation inputs (knobs)** — **not stored**; the caller supplies these to the normative replay operations (§6). Their units are fixed here *because the operations are normative*: without a fixed convention the same pack and the "same" acquisition would give different signals across implementations.
+
+| Knob | Symbol | Unit | Used in |
+|---|---|---|---|
+| gradient waveform | `G(t)` | tesla·metre⁻¹ (T·m⁻¹) | §6.1 |
+| gyromagnetic ratio | `γ` | rad·s⁻¹·T⁻¹ (¹H = 2.675 2219 × 10⁸) | §6.1, §6.4 |
+| static field | `B₀` | tesla (T) | §6.4 |
+| **volume susceptibility** | `χ`, `Δχ` | **dimensionless, SI — NOT CGS (differ by 4π)** | §6.4 |
+| orientation, azimuth | `θ`, `α` | radian (rad) | §6.4 |
+| surface relaxivity | `ρ` | metre·s⁻¹ | §6.3 |
+| *(derived)* off-resonance, phase | `Δω`, `φ` | rad·s⁻¹, rad | §6.1, §6.4 |
+
+**The b-value is neither stored nor a replay input.** It is a quantity the *caller* derives from its own `G(t)`; the replay operation (§6.1) consumes `G` directly and never sees a b-value, so no b-value convention is imposed on producers or replayers. A b-value appears in this standard only as the optional human-readable descriptor `replay_envelope.acquisition.b_max`, whose unit is **s·m⁻² (SI, not s·mm⁻²)** for that field alone.
+
+### 4.2 Frame and positions
 - **Frame.** Positions are in a fixed **laboratory frame**. Substrate *orientation* is a replay knob applied by rotating the **waveform** (and field direction), never by rotating stored positions (which would invalidate periodic and field-map channels).
-- **Positions are continuous.** Stored positions MUST be the *unwrapped* lab-frame trajectory (see §8.2). Periodicity, if any, is a property of auxiliary field-map channels, not of `positions`.
-- **Time.** The save grid is uniform with interval `Δt = dt_traj`. `N_t` and `T_max = (N_t − 1)·Δt` are recorded. The integrator's internal sub-step is a producer concern and is neither stored nor standardized.
-- **Complex signal.** The canonical signal is complex, `S = ⟨w · e^{iφ}⟩`; a real spin-echo magnitude is `|S|` or `⟨w·cos φ⟩` as appropriate. Averages `⟨·⟩` are weighted means over walkers with weights `w_i` (§5, `spin_weights`; default `w_i = 1`).
+- **Continuous.** Stored positions MUST be the *unwrapped* lab-frame trajectory (§8.2). Periodicity, if any, is a property of auxiliary field-map channels, not of `positions`.
+
+### 4.3 Time
+The save grid is uniform with interval `Δt = dt_traj`. `N_t` and `T_max = (N_t − 1)·Δt` are recorded. The integrator's internal sub-step is a producer concern and is neither stored nor standardized.
+
+### 4.4 Signal and sign convention
+The canonical signal is complex, `S = ⟨w · e^{+iφ}⟩`, with phase `φ = γ ∫ G·r dt` (§6.1), a **positive** gyromagnetic sign (`γ > 0`), and the `e^{+iφ}` rotation sense. Magnitude DWI is insensitive to this choice, but it is fixed here so the **complex** signal and the susceptibility phase (§6.4) are reproducible across implementations. A real spin-echo value is `|S|` or `⟨w·cos φ⟩`. Averages `⟨·⟩` are weighted means over walkers (weights `w_i`, default `1`).
+
+### 4.5 Grids
+Field-map channels (§5.2) are sampled at the walker's position **wrapped** into the field cell, `r mod cell_size`, on a uniform grid whose axes are in metres and whose spacing is `walk_params.cell_size`.
 
 ---
 
@@ -136,7 +175,10 @@ S(G) = Σ_i w_i · e^{i φ_i} / Σ_i w_i .
 
 This yields any b-value, any b-tensor, OGSE/PGSE/arbitrary `G(t)`, and (by sweeping `q`) the ensemble average propagator. **No stored quantity depends on `G`** — this is the whole point.
 
-### 6.2 Relaxation `T2`/`T1` (Relaxation tier)
+### 6.2 Bulk relaxation `T2`/`T1` (Bulk-relaxation tier)
+
+This tier replays the **intrinsic per-compartment** relaxation of each pool's water — distinct from surface relaxivity at walls, which is the separate Surface tier (§6.3).
+
 
 With per-compartment transverse/longitudinal rates and the `compartment` channel `c_i(t_k)`, accumulate a log-weight
 
@@ -205,7 +247,7 @@ Metadata flags use **explicit, self-describing names** (§10).
 | Tier | Required channels (beyond `positions`) | Replay unlocked | Metadata flag(s) |
 |---|---|---|---|
 | **T0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
-| **T1 Relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `relaxation: true` |
+| **T1 Bulk relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `bulk_relaxation: true` |
 | **T2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
 | **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, orientation, susceptibility | `field_offresonance: true`, `field_orientation: true` |
 | **T4 Exchange** | `bound_fraction` | §6.5 — MT/exchange (vector-Bloch) | `magnetization_transfer: true` |
@@ -279,7 +321,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "delta_chi_a": -0.1e-6               // anisotropic susceptibility scale the Field maps
                                          //   are normalized to; present iff Field tier
   },
-  "per_comp": {                          // REQUIRED iff Relaxation tier; else null
+  "per_comp": {                          // REQUIRED iff Bulk-relaxation tier; else null
     "T2": [0.08, 0.05],                  // s, index = compartment id (0 = extra/free)
     "T1": [1.0, 0.8],                    // s
     "R": null                            // OPTIONAL 3x3 rotation(s) mapping each compartment's
@@ -291,7 +333,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
   },
   "replay_envelope": {                   // REQUIRED — declared capabilities + domain
     "gradient": true,                    // T0 — always true
-    "relaxation": true,                  // T1 — per-compartment T1/T2
+    "bulk_relaxation": true,             // T1 — intrinsic per-compartment T1/T2
     "surface_relaxivity": false,         // T2 — any surface relaxivity
     "field_offresonance": true,          // T3 — any B0 / susceptibility off-resonance
     "field_orientation": true,           // T3 — any substrate orientation w.r.t. B0
@@ -311,7 +353,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
 }
 ```
 
-Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2→relaxation`, `rho→surface_relaxivity`, `B0_any→field_offresonance`, `orientation_any→field_orientation`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags).
+Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any→field_offresonance`, `orientation_any→field_orientation`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags).
 
 ---
 
