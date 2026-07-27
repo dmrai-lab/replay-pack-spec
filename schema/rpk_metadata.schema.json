@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dmrai.org/schema/rpk_metadata.schema.json",
+  "title": "Replay Pack metadata (rpk_schema_version 1.x)",
+  "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See SPEC.md.",
+  "type": "object",
+  "required": ["rpk_schema_version", "id", "walk_params", "compression", "replay_envelope", "license", "citation"],
+  "additionalProperties": true,
+  "properties": {
+    "rpk_schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Semantic version of the container schema. Minor bumps add optional fields."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable pack identifier; file basename SHOULD equal the last path segment."
+    },
+    "walk_params": {
+      "type": "object",
+      "required": ["n_walkers", "n_t", "dt_traj", "T_max", "diffusivity", "seed"],
+      "properties": {
+        "n_walkers": {"type": "integer", "minimum": 1},
+        "n_t": {"type": "integer", "minimum": 1},
+        "dt_traj": {"type": "number", "exclusiveMinimum": 0, "description": "Save interval (s)."},
+        "T_max": {"type": "number", "exclusiveMinimum": 0, "description": "(n_t-1)*dt_traj (s)."},
+        "diffusivity": {"type": ["number", "null"], "description": "Fixed free diffusivity (m^2/s). Not a knob."},
+        "seed": {"type": "integer"},
+        "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field tier."},
+        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale; present iff Field tier."}
+      }
+    },
+    "per_comp": {
+      "type": ["object", "null"],
+      "description": "Per-compartment relaxation; index = compartment id (0 = extra/free). Required iff Relaxation tier.",
+      "properties": {
+        "T2": {"type": ["array", "null"], "items": {"type": "number"}},
+        "T1": {"type": ["array", "null"], "items": {"type": "number"}},
+        "R": {"type": ["array", "null"], "description": "Optional per-compartment rotation(s)."}
+      }
+    },
+    "compression": {
+      "type": "object",
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Codec name. 'identity' = raw. Walker-preserving codecs required alongside per-walker channels.",
+          "examples": ["identity", "temporal_dct", "lowrank", "gaussian", "marginal"]
+        },
+        "K": {"type": ["integer", "null"], "description": "Codec rank/modes, if applicable."},
+        "walker_preserving": {"type": "boolean"}
+      }
+    },
+    "replay_envelope": {
+      "type": "object",
+      "required": ["gradient", "diffusivity_fixed"],
+      "description": "Declared capability tiers and acquisition domain. A flagged tier MUST have its channels present.",
+      "properties": {
+        "gradient": {"const": true},
+        "rf": {"type": "boolean"},
+        "T1T2": {"type": "boolean"},
+        "rho": {"type": "boolean"},
+        "mt": {"type": "boolean"},
+        "B0_any": {"type": "boolean"},
+        "orientation_any": {"type": "boolean"},
+        "permeability": {"type": "boolean", "description": "false = not a free knob (walked at fixed permeability)."},
+        "diffusivity_fixed": {"const": true},
+        "acquisition": {
+          "type": "object",
+          "properties": {
+            "b_max": {"type": "number", "description": "Max certified b-value (s/m^2)."},
+            "ogse_periods": {"type": "array", "items": {"type": "number"}},
+            "B0_list": {"type": "array", "items": {"type": "number"}}
+          }
+        }
+      }
+    },
+    "fidelity": {
+      "type": ["object", "null"],
+      "description": "Required iff any lossy codec. Max decoded-vs-raw replay error vs the split-half MC noise floor.",
+      "properties": {
+        "err_max": {"type": "number", "minimum": 0},
+        "floor_max": {"type": "number", "minimum": 0},
+        "within_2x_floor": {"type": "boolean"},
+        "battery": {"type": "string"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "How the walk was produced (recommended).",
+      "properties": {
+        "generator": {"type": "string"},
+        "generator_version": {"type": "string"},
+        "geometry": {"type": "string"},
+        "real_or_synthetic": {"type": "string", "enum": ["real", "synthetic"]}
+      }
+    },
+    "license": {"type": "string", "description": "License of the SOURCE substrate; never relicensed by this format."},
+    "citation": {"type": "string"}
+  }
+}
