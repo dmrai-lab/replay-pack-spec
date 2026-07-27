@@ -46,15 +46,25 @@ applies to the `positions` channel unless noted; params live in `compression` (e
 | `gaussian` | **distributional** | `modes`, `mean`, `coeff_mean`, `coeff_cov` | resamples walkers ⇒ Gradient tier only (SPEC §9 walker-preserving rule) |
 | `marginal` | **distributional** | `modes`, `mean`, `coeff_quantiles` | resamples walkers ⇒ Gradient tier only |
 
-Compartment maps, when present, are run-length encoded (a codec on the `compartment` channel):
+The dense per-walker physics channels each have their own structure-matched codec (they are
+**not** positions-like, so the position codecs above do not apply):
 
-| Decoded channel | `method`-independent storage | Stored keys |
-|---|---|---|
-| `compartment` | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` |
+| Decoded channel | Codec | Stored keys | Notes |
+|---|---|---|---|
+| `compartment` | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools) |
+| `bound_fraction` | **quantized RLE** | `bfrac_rle_vals` (uint8, `Q≤256`), `bfrac_rle_lens` (uint16), `bfrac_rle_counts` | occupancy is ~binary with long dwell/free runs. Quantize `[0,1]→{0..Q-1}` (meta `Q`, default 256), RLE rows. Measured **~7×**, replay error ≪ MC floor. Lossy only to the quantization step. |
+| `boundary_local_time` | **sparse CSR** | `blt_counts` (int32, nonzeros/row), `blt_cols` (int16 col indices), `blt_qvals` (int16 quantized values) | channel is ~85% zeros and **not** low-rank (idiosyncratic wall contacts). Store nonzeros only, values quantized to a signed global `scale`/`nlevels` (meta). Per-save values kept (any sequence gate, §6.6). Measured **~3×**, exact at `nlevels=4096`. |
 
-The reference implementation also stores `boundary_local_time` under the legacy key
-`dlog_boundary_unit` and `bound_fraction` under `bound_frac`; readers SHOULD accept these
-aliases across the `1.x` line.
+Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channels[<channel>]` in
+the metadata. The reference implementation also historically stored `boundary_local_time` raw
+under the legacy key `dlog_boundary_unit` and `bound_fraction` raw under `bound_frac`; readers
+SHOULD accept these raw aliases across the `1.x` line.
+
+**Why these are separate codecs.** The positions codecs (low-rank/DCT) exploit temporal
+smoothness and cross-walker correlation. `bound_fraction` (a near-binary step process) and
+`boundary_local_time` (a sparse sum of discrete contact events) have neither property — low-rank
+needs `K>32` and still misses the noise floor on `boundary_local_time` — so RLE and sparsity,
+respectively, are the structure-matched choices.
 
 ## Distributional codecs are Gradient-only
 

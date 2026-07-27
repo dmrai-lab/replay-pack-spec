@@ -150,7 +150,7 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 
 - Every per-walker/per-save channel MUST share `N_w` and `N_t` with `positions`.
 - `compartment` id `0` MUST denote the extra-cellular/free pool; other ids MUST be described in `per_comp`.
-- `bound_fraction` MUST lie in `[0, 1]`.
+- `bound_fraction` MUST lie in `[0, 1]`, and at `k = 0` it MUST be the equilibrium occupancy (the walk is pre-burned-in; §8.8).
 - `boundary_local_time` MUST be non-negative and expressed in the `ρ/D = 1` normalization of §6.3.
 
 ---
@@ -222,6 +222,8 @@ The susceptibility phase adds to the gradient phase inside the *same* exponentia
 
 With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a **vector-Bloch replay** — RF pulses act as rotations of the magnetization vector, which the scalar log-weight model cannot represent (it has no `M_z` reservoir). Saturation transfer is *emergent*. The bound-pool parameters are replay knobs. This same vector-Bloch path is the general route for *arbitrary RF* (§6.6). See the reference implementation for the Bloch–McConnell blend.
 
+**Equilibrium start.** An Exchange pack's `t=0` is the **bound-pool equilibrium**: the walk is generated pre-burned-in (§8.8), so replay begins from a fully-relaxed steady-state occupancy and never sees the fill-up transient.
+
 ### 6.6 The acquisition is a replay knob (no sequence is baked into the pack)
 
 A pack stores **no** assumption about the pulse sequence. The full acquisition — the gradient waveform `G(t)` **and** the RF (flip angles, refocusing, storage) — is supplied at replay. This is what makes one walk serve GRE, spin-echo, CPMG, stimulated-echo/PGSTE, and arbitrary sequences alike.
@@ -282,6 +284,9 @@ MUST honor §4 exactly. A producer using non-SI internal units MUST convert on w
 
 ### 8.7 Honest envelope
 MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST attach a `fidelity` self-report (§9.3, §11). A producer MUST NOT declare a tier whose channel it did not actually populate.
+
+### 8.8 Equilibrium start for Exchange packs
+An Exchange-tier (T4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **burn in** — evolve the binding dynamics until the bound-pool occupancy has stabilized — and **discard** that interval, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The burn-in SHOULD span several exchange times `1/(k_f + k_r)`, and the producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the Exchange tier; the other tiers have no such initial-condition transient.
 
 ---
 
