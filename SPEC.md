@@ -43,7 +43,7 @@ Producing a converged random walk through realistic microstructure is the expens
 - **Trajectory.** The stored position of a walker at each save time: `r_i(t_k)`.
 - **Save grid.** The `N_t` times `t_k = k · Δt`, `k ∈ [0, N_t)`, at which positions are stored. `Δt` is the **save interval** (`dt_traj`), not necessarily the integrator's internal sub-step.
 - **Channel.** A named array in the pack (e.g. `positions`, `compartment`). Some are REQUIRED, most OPTIONAL.
-- **Replay knob.** A physical parameter applied *at replay time* — gradient waveform `G(t)`, static field `B0`, substrate orientation, `T2`/`T1`, surface relaxivity `ρ`, susceptibility, magnetization-transfer pools. Knobs are **not** stored per value; they parameterize the replay operation.
+- **Replay knob.** A physical parameter applied *at replay time* — gradient waveform `G(t)`, static field `B0`, substrate orientation, `T2`/`T1`, surface relaxivity `ρ`, susceptibility, and the bound-pool relaxation/off-resonance of magnetization transfer. Knobs are **not** stored per value; they parameterize the replay operation.
 - **Replay operation.** A deterministic function mapping (channels, knobs) → signal (§6).
 - **Capability tier.** A named group of channels that unlocks one class of replay (§7).
 - **Declared envelope.** The region of knob space over which the producer certifies the pack's replay to a stated fidelity (§11).
@@ -56,9 +56,11 @@ Producing a converged random walk through realistic microstructure is the expens
 
 Replay rests on one physical fact.
 
-> **Replay invariant.** For a fixed substrate geometry, a fixed (possibly per-compartment) free diffusivity `D`, and a fixed pseudo-random seed, the ensemble of walker trajectories `{r_i(t_k)}` and the boundary-contact record are **independent of** the gradient waveform `G(t)`, the static field `B0`, the substrate orientation, the relaxation times `T2`/`T1`, the surface relaxivity `ρ`, the susceptibility distribution, and the magnetization-transfer parameters.
+> **Replay invariant.** For a fixed substrate geometry, a fixed (possibly per-compartment) free diffusivity `D`, and a fixed pseudo-random seed, the ensemble of walker trajectories `{r_i(t_k)}` and the boundary-contact record are **independent of** the gradient waveform `G(t)`, the static field `B0`, the substrate orientation, the relaxation times `T2`/`T1`, the surface relaxivity `ρ`, the susceptibility distribution, and the bound-pool relaxation/off-resonance of magnetization transfer.
 
 All of those quantities enter the *signal* only through a phase or a (log-)weight accumulated **along** an already-determined trajectory. Therefore they are **replay knobs**: the trajectory is computed once and stored; the signal for any knob setting is a cheap functional of the stored channels (§6).
+
+*Magnetization transfer is split.* The MT **binding kinetics** (binding rate and dwell time) are **not** knobs: a bound spin is frozen for its dwell, so they change the trajectory itself and are fixed at walk time — recorded through the `bound_fraction` schedule (§5.2), exactly as membrane permeability (§7) is a walk-time property. Only the **bound-pool relaxation/off-resonance** (`T2_b`, `T1_b`, `Δω_b`) are replay knobs (§6.5).
 
 Two consequences are used throughout:
 
