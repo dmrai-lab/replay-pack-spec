@@ -139,7 +139,7 @@ A pack is a set of named arrays (**channels**) plus a metadata object (§10). Ar
 | `spin_weights` | `(N_w,)` | float32 | — | Per-walker statistical weight `w_i` (e.g. compartment volume weighting). Default `1`. | all tiers |
 | `compartment` | `(N_w, N_t)` | int16 | label | Compartment id of walker `i` at save `k`. Id **0 is the extra-cellular / free compartment by convention**; positive ids are producer-defined and described in metadata `per_comp`. | Relaxation |
 | `boundary_local_time` | `(N_w, N_t)` | float32 | m (see below) | Per-step accumulated wall-contact measure with **`ρ/D = 1`** (dimension of length ÷ diffusivity is folded so that replay multiplies by the desired `ρ/D`). See §6.3. | Surface |
-| `bound_fraction` | `(N_w, N_t)` | float32 | — ∈ [0,1] | Fraction of walker `i` bound to the restricted (macromolecular) pool at save `k`. | Exchange/MT |
+| `bound_fraction` | `(N_w, N_t)` | float32 | — ∈ [0,1] | Fraction of walker `i` bound to the restricted (macromolecular) pool at save `k`. | Magnetization transfer |
 | `susc_field_0` | producer grid | float32 | per unit susceptibility | m=0 (isotropic / mean) component of the substrate's normalized off-resonance field map. | Field |
 | `susc_field_C` | producer grid | float32 | " | ℓ=2 cosine (anisotropic) component. | Field |
 | `susc_field_S` | producer grid | float32 | " | ℓ=2 sine (anisotropic) component. | Field |
@@ -222,11 +222,11 @@ The off-resonance contributes to the signal only through the **acquisition's pha
 
 The susceptibility phase adds to the gradient phase inside the *same* exponential, so the diffusion×susceptibility covariance (the cross-term) is preserved. Field strength, orientation, susceptibility scale, and sequence are all knobs; one walk serves any combination.
 
-### 6.5 Magnetization transfer / exchange (Exchange tier)
+### 6.5 Magnetization transfer (Magnetization-transfer tier)
 
 With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a **vector-Bloch replay** — RF pulses act as rotations of the magnetization vector, which the scalar log-weight model cannot represent (it has no `M_z` reservoir). Saturation transfer is *emergent*. The bound-pool parameters are replay knobs. This same vector-Bloch path is the general route for *arbitrary RF* (§6.6). See the reference implementation for the Bloch–McConnell blend.
 
-**Equilibrium start.** An Exchange pack's `t=0` is the **bound-pool equilibrium**: the walk is generated pre-burned-in (§8.8), so replay begins from a fully-relaxed steady-state occupancy and never sees the fill-up transient.
+**Equilibrium start.** A magnetization-transfer pack's `t=0` is the **bound-pool equilibrium**: the walk is generated pre-burned-in (§8.8), so replay begins from a fully-relaxed steady-state occupancy and never sees the fill-up transient.
 
 ### 6.6 The acquisition is a replay knob (no sequence is baked into the pack)
 
@@ -276,8 +276,8 @@ Metadata flags use **explicit, self-describing names** (§10).
 | **T0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
 | **T1 Bulk relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `bulk_relaxation: true` |
 | **T2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
-| **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, orientation, susceptibility | `field_offresonance: true`, `field_orientation: true` |
-| **T4 Exchange** | `bound_fraction` | §6.5 — MT/exchange (vector-Bloch) | `magnetization_transfer: true` |
+| **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, susceptibility, and (with the ℓ=2 maps) orientation | `field: true` |
+| **T4 Magnetization transfer** | `bound_fraction` | §6.5 — magnetization transfer (vector-Bloch) | `magnetization_transfer: true` |
 
 The declared tier set lives in `replay_envelope` (§10). A replayer asked for a knob outside the declared tiers MUST refuse with a clear "capability not present" error, **not** silently return an approximate result (§11, §13).
 
@@ -310,8 +310,8 @@ MUST honor §4 exactly. A producer using non-SI internal units MUST convert on w
 ### 8.7 Honest envelope
 MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST attach a `fidelity` self-report (§9.3, §11). A producer MUST NOT declare a tier whose channel it did not actually populate.
 
-### 8.8 Equilibrium start for Exchange packs
-An Exchange-tier (T4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the Exchange tier; the other tiers have no such initial-condition transient.
+### 8.8 Equilibrium start for magnetization-transfer packs
+A magnetization-transfer-tier (T4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the magnetization-transfer tier; the other tiers have no such initial-condition transient.
 
 *Reference implementation.* dmipy-sim exposes this as `equilibrate_binding = 'auto' | 'burnin' | 'fast' | 'off'`: `'burnin'` (the `'auto'` default when MT is on) runs an **adaptive RF-off burn-in in ~dwell-sized chunks until the ensemble occupancy plateaus** (geometry-agnostic, with a convergence flag); `'fast'` seeds the equilibrium occupancy analytically from a known `S/V` when that is position-invariant; `'off'` keeps the legacy all-free start. A producer MAY use any method that satisfies the equilibrium-start requirement above.
 
@@ -319,7 +319,7 @@ An Exchange-tier (T4) pack MUST begin from the **bound-pool equilibrium**. A Mon
 
 ## 9. Codecs and compression (orthogonal layer)
 
-**The format does not depend on compression.** Every channel is defined by its *decoded* array (§5). How that array is *stored* is a per-channel **codec** choice. The identity codec — the raw array — is the normative baseline, and a pack stored entirely with identity codecs is fully conformant. This section defines only the codec **interface**; the concrete codecs and their exact stored-key layouts live in a separate, independently versioned document, [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md), so that new compression methods (some still being developed) can be added without touching this frozen core.
+**The format does not depend on compression.** Every channel is defined by its *decoded* array (§5). How that array is *stored* is a per-channel **codec** choice. The identity codec — the raw array — is the normative baseline, and a pack stored entirely with identity codecs is fully conformant. This section defines only the codec **interface**; the concrete codecs and their exact stored-key layouts live in a separate, independently versioned document, [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md), so that compression methods can be added or revised without touching this frozen core.
 
 A conformant codec MUST satisfy four rules:
 
@@ -327,6 +327,8 @@ A conformant codec MUST satisfy four rules:
 2. **Decodes to the contract.** Decoding MUST yield the exact channel array of §5 (dtype/shape/units). Channel *presence* for tiers (§7) and conformance (§13) is satisfied by the channel's raw key **or** the registry-defined stored keys of its codec.
 3. **Identity is the baseline.** `identity` (the raw array under its channel name) is always valid and lossless, and every replayer MUST support it.
 4. **Lossy ⇒ self-certified.** A pack using any lossy codec MUST include a `fidelity` object reporting the maximum decoded-vs-raw replay error over a declared **acquisition battery**, measured against the **split-half Monte-Carlo noise floor** (the ensemble split into two *random* halves — random because walkers are typically seeded in compartment order). The convention: "lossless to the noise floor" means `err_max ≤ tol · floor_max` (reference `tol = 2`). Lossless codecs SHOULD report `err_max = 0`.
+
+The `fidelity` object is **codec-agnostic** — it reports the decoded-vs-raw replay error whatever method produced it — so it lives in the **core** metadata (§10) and is read identically by any replayer or bank; only the codec *algorithms* live in the registry. How to read it: `err_max` is the worst-case replay error over the battery, `floor_max` the irreducible MC noise floor for the same ensemble, and `within_2x_floor: true` means the loss sits below `2×` that floor (scientifically negligible).
 
 One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
 
@@ -367,25 +369,29 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "gradient": true,                    // T0 — always true
     "bulk_relaxation": true,             // T1 — intrinsic per-compartment T1/T2
     "surface_relaxivity": false,         // T2 — any surface relaxivity
-    "field_offresonance": true,          // T3 — any B0 / susceptibility off-resonance
-    "field_orientation": true,           // T3 — any substrate orientation w.r.t. B0
-    "magnetization_transfer": false,     // T4 — MT/exchange (vector-Bloch)
+    "field": true,                       // T3 — any B0 / susceptibility off-resonance; orientation too when the ℓ=2 maps are present
+    "magnetization_transfer": false,     // T4 — magnetization transfer (vector-Bloch)
     "diffusivity_fixed": true,           // D is a fixed pack property, not a knob
     "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0] }
   },
-  "fidelity": {                          // REQUIRED iff any lossy codec (§9)
-    "err_max": 0.0015, "floor_max": 0.0074, "within_2x_floor": true,
+  "fidelity": {                          // REQUIRED iff any lossy codec (§9); codec-agnostic
+    "err_max": 0.0015,                   // worst decoded-vs-raw replay error over `battery`
+    "floor_max": 0.0074,                 // irreducible MC noise floor (same ensemble)
+    "within_2x_floor": true,             // err_max <= 2*floor_max -> loss is negligible
     "battery": "..." },
   "provenance": {                        // RECOMMENDED — how the walk was made
     "generator": "dmipy-sim", "generator_version": "...",
-    "geometry": "PackedMyelinatedCylinders", "real_or_synthetic": "synthetic",
+    "substrate": {                       // WHAT was walked (descriptive; geometry format is out of scope, §1)
+      "representation": "analytical",    //   "analytical" | "mesh" | "voxel" | ...
+      "description": "PackedMyelinatedCylinders, gamma radii, f=0.55",
+      "ref": null },                     //   optional URI / DOI / hash of the source substrate
     "permeability": 0.0 },               // the FIXED permeability the walk used (§7), if any
   "license": "CC-BY-4.0",                // REQUIRED — the SOURCE substrate's license
   "citation": "Fick RHJ, dmrai-lab (2026) ..."   // REQUIRED
 }
 ```
 
-Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any→field_offresonance`, `orientation_any→field_orientation`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags).
+Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any`/`orientation_any`/`field_offresonance`/`field_orientation→field`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags). The substrate bank derives its catalog card from `provenance` and the optional Croissant sidecar (§12); the card's layout is the bank's concern, outside this format.
 
 ---
 
@@ -453,7 +459,7 @@ A pack carries data only. Safetensors executes no code on load, and the metadata
 - RFC 2119 — Key words for requirement levels.
 - safetensors — https://github.com/huggingface/safetensors
 - Croissant (MLCommons) — http://mlcommons.org/croissant/
-- The Replay Pack methodology paper — *(forthcoming; this specification claims priority on the infrastructure/format.)*
+- This document is the citable, versioned reference for the format; its Zenodo DOI establishes priority on the format and infrastructure.
 
 ---
 

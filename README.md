@@ -36,7 +36,7 @@ Compression is an *orthogonal* per-channel codec layer (§9 of the spec).
 | **T1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **T2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
 | **T3 Field** | `susc_field_{C,S,0}` | any `B0`, orientation |
-| **T4 Exchange** | `bound_fraction` | magnetization transfer / exchange |
+| **T4 Magnetization transfer** | `bound_fraction` | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack
 does not carry.
@@ -47,9 +47,8 @@ does not carry.
 frozen; semantics may be clarified. The reference implementation
 ([dmipy-sim](https://github.com/) — private for now) emits `rpk_schema_version = "1.1"`.
 
-Intended trajectory: this spec is deposited (Zenodo) to establish priority on the
-infrastructure/format; the methodology paper follows (arXiv); the substrate bank and example
-substrates open thereafter.
+Intended trajectory: this spec is deposited (Zenodo) to establish priority on the format and
+infrastructure; reference tooling and example substrates open thereafter.
 
 ## Licensing
 

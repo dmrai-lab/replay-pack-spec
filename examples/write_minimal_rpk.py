@@ -38,13 +38,14 @@ def write_pack(path, positions, dt, D, seed, pack_id):
         "replay_envelope": {
             "gradient": True,                 # T0 only
             "bulk_relaxation": False, "surface_relaxivity": False,
-            "field_offresonance": False, "field_orientation": False,
+            "field": False,
             "magnetization_transfer": False, "diffusivity_fixed": True,
             "acquisition": {"b_max": 5.0e9, "ogse_periods": [], "B0_list": []},
         },
         "fidelity": None,                       # identity codec is lossless
         "provenance": {"generator": "write_minimal_rpk.py", "generator_version": "0.1",
-                       "geometry": "free-diffusion (analytic)", "real_or_synthetic": "synthetic"},
+                       "substrate": {"representation": "analytical",
+                                     "description": "free diffusion (no restriction)", "ref": None}},
         "license": "CC0-1.0",
         "citation": "Replay Pack minimal example, dmrai-lab (2026).",
     }

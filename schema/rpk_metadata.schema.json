@@ -56,14 +56,13 @@
     "replay_envelope": {
       "type": "object",
       "required": ["gradient", "diffusivity_fixed"],
-      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any->field_offresonance, orientation_any->field_orientation, mt->magnetization_transfer.",
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
       "additionalProperties": true,
       "properties": {
         "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
         "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
         "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
-        "field_offresonance": {"type": "boolean", "description": "T3: replays any B0 / static susceptibility off-resonance."},
-        "field_orientation": {"type": "boolean", "description": "T3: replays any substrate orientation relative to B0."},
+        "field": {"type": "boolean", "description": "T3: replays static off-resonance / susceptibility (any B0 and susceptibility scale); substrate orientation relative to B0 is also a knob when the l=2 basis maps (susc_field_C/S) are present. An isotropic-only pack carries susc_field_0 alone."},
         "magnetization_transfer": {"type": "boolean", "description": "T4: replays MT/exchange via vector-Bloch."},
         "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
         "acquisition": {
@@ -79,12 +78,12 @@
     },
     "fidelity": {
       "type": ["object", "null"],
-      "description": "Required iff any lossy codec. Max decoded-vs-raw replay error vs the split-half MC noise floor.",
+      "description": "Required iff any lossy codec (SPEC §9). Codec-agnostic trust certificate: the decoded-vs-raw replay error, whatever codec produced it. Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
       "properties": {
-        "err_max": {"type": "number", "minimum": 0},
-        "floor_max": {"type": "number", "minimum": 0},
-        "within_2x_floor": {"type": "boolean"},
-        "battery": {"type": "string"}
+        "err_max": {"type": "number", "minimum": 0, "description": "Worst-case decoded-vs-raw replay error over `battery`."},
+        "floor_max": {"type": "number", "minimum": 0, "description": "Irreducible split-half MC noise floor for the same ensemble."},
+        "within_2x_floor": {"type": "boolean", "description": "err_max <= 2*floor_max, i.e. the loss is below the MC noise (scientifically negligible)."},
+        "battery": {"type": "string", "description": "The acquisition set over which err_max/floor_max were measured."}
       }
     },
     "provenance": {
@@ -93,8 +92,15 @@
       "properties": {
         "generator": {"type": "string"},
         "generator_version": {"type": "string"},
-        "geometry": {"type": "string"},
-        "real_or_synthetic": {"type": "string", "enum": ["real", "synthetic"]},
+        "substrate": {
+          "type": ["object", "null"],
+          "description": "What was walked (descriptive only; the geometry format itself is out of scope, SPEC §1). Feeds the substrate-bank catalog card via provenance + the Croissant sidecar (SPEC §12).",
+          "properties": {
+            "representation": {"type": "string", "description": "e.g. \"analytical\", \"mesh\", \"voxel\"."},
+            "description": {"type": "string", "description": "Human-readable substrate summary (type, key parameters)."},
+            "ref": {"type": ["string", "null"], "description": "Optional URI / DOI / hash of the source substrate."}
+          }
+        },
         "permeability": {"type": ["number", "null"], "description": "Fixed membrane permeability the walk used (m/s); not a replay knob in 1.x (SPEC §7)."}
       }
     },

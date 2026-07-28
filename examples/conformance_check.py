@@ -36,12 +36,13 @@ TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MU
     "bulk_relaxation": ["compartment"],
     "surface_relaxivity": ["boundary_local_time"],
     "magnetization_transfer": ["bound_fraction"],
-    "field_offresonance": ["susc_field_C", "susc_field_S", "susc_field_0"],
+    "field": ["susc_field_0"],   # isotropic Phi_0 is the minimum; l=2 C/S add orientation
 }
 # pre-rename 1.x aliases accepted on read (SPEC §10)
 ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
-               "rho": "surface_relaxivity", "B0_any": "field_offresonance",
-               "orientation_any": "field_orientation", "mt": "magnetization_transfer"}
+               "rho": "surface_relaxivity", "B0_any": "field", "orientation_any": "field",
+               "field_offresonance": "field", "field_orientation": "field",
+               "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
 LOSSLESS_CODECS = {"identity", "temporal_dct", "lowrank"}
 
@@ -115,10 +116,10 @@ def check(path):
             errs.append("distributional codec must declare Gradient tier only (SPEC §9)")
     if env.get("bulk_relaxation") and not (meta.get("per_comp") or {}).get("T2"):
         errs.append("bulk_relaxation tier declared but per_comp.T2 absent (SPEC §10)")
-    if env.get("field_offresonance"):
+    if env.get("field"):
         wp = meta.get("walk_params", {})
         if wp.get("cell_size") is None:
-            errs.append("field_offresonance tier declared but walk_params.cell_size absent (SPEC §7)")
+            errs.append("field tier declared but walk_params.cell_size absent (SPEC §7)")
 
     # 4. shared (N_w, N_t) across per-walker/per-save channels
     if "positions" in shapes and len(shapes["positions"]) == 3:
@@ -149,8 +150,8 @@ def main(path):
     env = _norm_env(meta)
     tiers = [name for name, on in [
         ("T0-Gradient", env.get("gradient")), ("T1-BulkRelax", env.get("bulk_relaxation")),
-        ("T2-Surface", env.get("surface_relaxivity")), ("T3-Field", env.get("field_offresonance")),
-        ("T4-Exchange", env.get("magnetization_transfer"))] if on]
+        ("T2-Surface", env.get("surface_relaxivity")), ("T3-Field", env.get("field")),
+        ("T4-MT", env.get("magnetization_transfer"))] if on]
     print(f"pack id:    {meta.get('id')}")
     print(f"schema:     {meta.get('rpk_schema_version')}  codec: {meta.get('compression', {}).get('method')}")
     print(f"tiers:      {', '.join(tiers) or '(none)'}")

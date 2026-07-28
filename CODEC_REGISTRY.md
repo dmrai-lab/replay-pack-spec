@@ -1,15 +1,18 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.2.0 (draft).
+**Registry version:** 0.1.0 (draft).
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
 The core [`SPEC.md`](SPEC.md) §9 defines only the codec *interface* — a codec is declared in
 `compression.method`, decodes to the §5 array contract, `identity` is the lossless baseline,
 and lossy codecs self-certify against the MC noise floor. This registry lists the **concrete
-codecs** and the **exact safetensors tensor keys** each stores. It is intentionally separate
-so new compression methods (several still being developed and described in the methodology
-paper) can be added, revised, or deprecated **without changing the frozen core format**.
+codecs** and the **exact safetensors tensor keys** each stores. It is a **storage /
+inference-optimization** layer: a codec changes only *how* a channel is stored, never *what it
+means* — the meaning of every channel, and of the replayed signal, is fixed by the core spec
+(§5–6) and is independent of any codec. The registry is kept separate, and versioned
+independently, so codecs can be added, revised, or deprecated **without changing the frozen
+core format**.
 
 A conformant replayer implements the `identity` codec and MAY implement any subset of the
 others; it MUST refuse (never guess) a `method` it does not recognize (SPEC §9, §13).
@@ -36,8 +39,9 @@ Every channel is stored raw under its own name.
 
 ### Reference-implementation codecs (dmipy-sim)
 
-These are **experimental** and MAY change while the methodology paper is in preparation. Each
-applies to the `positions` channel unless noted; params live in `compression` (e.g. `K`).
+These are reference-implementation codecs and MAY be revised; each changes only how a channel
+is stored, never what it decodes to (§5). Each applies to the `positions` channel unless noted;
+params live in `compression` (e.g. `K`).
 
 | `method` | Class | Stored keys | Notes |
 |---|---|---|---|
@@ -94,7 +98,7 @@ The **off-resonance/susceptibility** operation (§6.4) samples a field map at `r
 — a **nonlinear** function of position — and the **Bloch/MT** operation (§6.5) evolves
 magnetization step by step; both REQUIRE the decoded positions. A replayer therefore takes the
 coefficient-space fast path for the position-linear tiers (Gradient, Bulk-relaxation, Surface)
-and falls back to decoded positions for the Field and Exchange tiers. This is one reason to
+and falls back to decoded positions for the Field and Magnetization-transfer tiers. This is one reason to
 prefer a linear-basis position codec: it is not only smaller but also directly replayable.
 
 The `identity` codec stores positions raw, so it has no coefficient space; the fast path applies
