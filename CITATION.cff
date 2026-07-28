@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "The Replay Pack Specification (.rpk): an open format for replayable Monte-Carlo diffusion-MRI walks"
+message: "If you implement, emit, or consume Replay Packs, please cite this specification."
+type: standard
+version: 0.1.0
+date-released: 2026-07-27
+abstract: >
+  A portable, code-free file format and replay model that stores the state of a
+  Monte-Carlo random walk through a diffusion-MRI substrate so the measured signal can
+  be reconstructed ("replayed") for arbitrary gradient waveforms, field strengths,
+  orientations, relaxation times, surface relaxivity, and magnetization-transfer
+  settings without re-running the walk. The format is independent of any compression
+  scheme and supports partial ("tiered") producers, enabling interoperability across
+  simulators and a shared substrate bank.
+authors:
+  - family-names: Fick
+    given-names: Rutger H. J.
+    affiliation: dmrai-lab
+keywords:
+  - diffusion MRI
+  - Monte-Carlo simulation
+  - microstructure
+  - data format
+  - replay
+license: CC-BY-4.0
+license-url: "https://creativecommons.org/licenses/by/4.0/legalcode"

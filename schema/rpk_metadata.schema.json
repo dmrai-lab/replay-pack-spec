@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dmrai.org/schema/rpk_metadata.schema.json",
+  "title": "Replay Pack metadata (rpk_schema_version 1.x)",
+  "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See SPEC.md.",
+  "type": "object",
+  "required": ["rpk_schema_version", "id", "walk_params", "compression", "replay_envelope", "license", "citation"],
+  "additionalProperties": true,
+  "properties": {
+    "rpk_schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Semantic version of the container schema. Minor bumps add optional fields."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable pack identifier; file basename SHOULD equal the last path segment."
+    },
+    "walk_params": {
+      "type": "object",
+      "required": ["n_walkers", "n_t", "dt_traj", "T_max", "diffusivity", "seed"],
+      "properties": {
+        "n_walkers": {"type": "integer", "minimum": 1},
+        "n_t": {"type": "integer", "minimum": 1},
+        "dt_traj": {"type": "number", "exclusiveMinimum": 0, "description": "Save interval (s)."},
+        "T_max": {"type": "number", "exclusiveMinimum": 0, "description": "(n_t-1)*dt_traj (s)."},
+        "diffusivity": {"type": ["number", "null"], "description": "Fixed free diffusivity (m^2/s). Not a knob."},
+        "seed": {"type": "integer"},
+        "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field tier."},
+        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale the Field maps are normalized to (SPEC §6.4); present iff Field tier. A purely isotropic source uses susc_field_0 alone."}
+      }
+    },
+    "per_comp": {
+      "type": ["object", "null"],
+      "description": "Per-compartment relaxation; index = compartment id (0 = extra/free). Required iff Bulk-relaxation tier.",
+      "properties": {
+        "T2": {"type": ["array", "null"], "items": {"type": "number"}},
+        "T1": {"type": ["array", "null"], "items": {"type": "number"}},
+        "R": {"type": ["array", "null"], "description": "Optional per-compartment 3x3 rotation(s) mapping the compartment's local frame to the lab frame, used to orient the anisotropic Field maps (SPEC §6.4). null if unoriented."}
+      }
+    },
+    "compression": {
+      "type": "object",
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Codec name. 'identity' = raw. Walker-preserving codecs required alongside per-walker channels.",
+          "examples": ["identity", "temporal_dct", "lowrank", "gaussian", "marginal"]
+        },
+        "K": {"type": ["integer", "null"], "description": "Codec rank/modes, if applicable."},
+        "walker_preserving": {"type": "boolean"}
+      }
+    },
+    "replay_envelope": {
+      "type": "object",
+      "required": ["gradient", "diffusivity_fixed"],
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
+      "additionalProperties": true,
+      "properties": {
+        "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
+        "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
+        "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
+        "field": {"type": "boolean", "description": "T3: replays static off-resonance / susceptibility (any B0 and susceptibility scale); substrate orientation relative to B0 is also a knob when the l=2 basis maps (susc_field_C/S) are present. An isotropic-only pack carries susc_field_0 alone."},
+        "magnetization_transfer": {"type": "boolean", "description": "T4: replays MT/exchange via vector-Bloch."},
+        "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
+        "acquisition": {
+          "type": "object",
+          "description": "Certified acquisition domain the producer stands behind.",
+          "properties": {
+            "b_max": {"type": "number", "description": "Max certified b-value (s/m^2)."},
+            "ogse_periods": {"type": "array", "items": {"type": "number"}},
+            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."}
+          }
+        }
+      }
+    },
+    "fidelity": {
+      "type": ["object", "null"],
+      "description": "Required iff any lossy codec (SPEC §9). Codec-agnostic trust certificate: the decoded-vs-raw replay error, whatever codec produced it. Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
+      "properties": {
+        "err_max": {"type": "number", "minimum": 0, "description": "Worst-case decoded-vs-raw replay error over `battery`."},
+        "floor_max": {"type": "number", "minimum": 0, "description": "Irreducible split-half MC noise floor for the same ensemble."},
+        "within_2x_floor": {"type": "boolean", "description": "err_max <= 2*floor_max, i.e. the loss is below the MC noise (scientifically negligible)."},
+        "battery": {"type": "string", "description": "The acquisition set over which err_max/floor_max were measured."}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "How the walk was produced (recommended).",
+      "properties": {
+        "generator": {"type": "string"},
+        "generator_version": {"type": "string"},
+        "substrate": {
+          "type": ["object", "null"],
+          "description": "What was walked (descriptive only; the geometry format itself is out of scope, SPEC §1). Feeds the substrate-bank catalog card via provenance + the Croissant sidecar (SPEC §12).",
+          "properties": {
+            "representation": {"type": "string", "description": "e.g. \"analytical\", \"mesh\", \"voxel\"."},
+            "description": {"type": "string", "description": "Human-readable substrate summary (type, key parameters)."},
+            "ref": {"type": ["string", "null"], "description": "Optional URI / DOI / hash of the source substrate."}
+          }
+        },
+        "permeability": {"type": ["number", "null"], "description": "Fixed membrane permeability the walk used (m/s); not a replay knob in 1.x (SPEC §7)."}
+      }
+    },
+    "license": {"type": "string", "description": "License of the SOURCE substrate; never relicensed by this format."},
+    "citation": {"type": "string"}
+  }
+}

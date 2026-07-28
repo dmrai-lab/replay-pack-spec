@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.rpk
+*.croissant.jsonld
+.venv/
