@@ -159,6 +159,8 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 
 These define the meaning of the channels. A **conformant replayer** MUST reproduce these operations (to the decoded arrays' numerical precision). `γ` is the proton gyromagnetic ratio. Sums over `k` run on the save grid with weight `Δt` (trapezoidal or left-rule is producer-agnostic *provided the producer used the same rule to converge the walk*; left-rule is the reference).
 
+The operations split by their dependence on position: the gradient phase (§6.1) and the relaxation/surface log-weights (§6.2–6.3) are **linear** in the stored positions, whereas the off-resonance field-map lookup (§6.4) and the Bloch/MT evolution (§6.5) are **nonlinear**. This is informative only — the signal is identical either way — but it lets a replayer evaluate the position-linear operations directly in a linear codec's coefficient space without decoding the full trajectory (see `CODEC_REGISTRY.md`, "Replay in coefficient space").
+
 ### 6.1 Gradient phase (Gradient tier — always available)
 
 For a gradient waveform `G(t_k)` (T·m⁻¹, resampled to the save grid) the accumulated phase of walker `i` is
