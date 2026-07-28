@@ -51,7 +51,8 @@ The dense per-walker physics channels each have their own structure-matched code
 
 | Decoded channel | Codec | Stored keys | Notes |
 |---|---|---|---|
-| `compartment` | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools) |
+| `compartment` (integer labels) | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools) |
+| `compartment` (fractional occupancy) | **quantized RLE** | same keys + meta `fractional:true, Q, scale` | **permeable** substrates: a walker crossing a membrane mid-save has a fractional time-in-compartment, so the channel is near-binary occupancy in `[0, scale]` (∈[0,1] for 2 compartments) rather than integer labels. Quantize to `Q` levels and RLE (same structure as `bound_fraction`); integer RLE would lossily int-cast the fractions. |
 | `bound_fraction` | **quantized RLE** | `bfrac_rle_vals` (uint8, `Q≤256`), `bfrac_rle_lens` (uint16), `bfrac_rle_counts` | occupancy is ~binary with long dwell/free runs. Quantize `[0,1]→{0..Q-1}` (meta `Q`, default 256), RLE rows. Measured **~7×**, replay error ≪ MC floor. Lossy only to the quantization step. |
 | `boundary_local_time` | **sparse CSR** | `blt_counts` (int32, nonzeros/row), `blt_cols` (int16 col indices), `blt_qvals` (int16 quantized values) | channel is ~85% zeros and **not** low-rank (idiosyncratic wall contacts). Store nonzeros only, values quantized to a signed global `scale`/`nlevels` (meta). Per-save values kept (any sequence gate, §6.6). Measured **~3×**, exact at `nlevels=4096`. |
 
