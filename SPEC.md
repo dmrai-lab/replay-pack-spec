@@ -242,6 +242,27 @@ so `s(t_k) ∈ {−1, 0, +1}` in the common cases. The **gradient phase (§6.1)*
 
 Arbitrary RF — non-180° flips, adiabatic pulses, MT saturation — cannot be reduced to a scalar sign and requires the **vector-Bloch replay** (§6.5). A conformant replayer MAY implement only the scalar-gate model; it MUST then **refuse** acquisitions that need full Bloch evolution rather than approximate them (§13).
 
+### 6.7 Orientation dispersion (informative, non-normative — analytical overlay)
+
+*This subsection is **informative**: it defines no new channel, tier, or metadata flag, and a pack is fully conformant without it.* It records a common, useful **derived** operation that a replayer MAY offer on top of the substrate-orientation knob (§4.2).
+
+The orientation knob already evaluates one coherent bundle at any orientation by rotating the waveform. An orientation *distribution* is therefore the fibre-response ⊗ ODF superposition of that same bundle over orientations: for a single-fibre response `R` (the stored bundle) and an orientation distribution `p(Ω)`,
+
+```
+S_voxel(G) = ∫_{S²} p(Ω) · S(R_Ω⁻¹ · G) dΩ .
+```
+
+For an axially-symmetric fibre response this is the standard rotational-harmonic (Funk–Hecke) convolution: expand the response in zonal harmonics `R_l` and the ODF in real SH `f_lm`, then `S_lm = 2π·√(4π/(2l+1))·R_l·f_lm`. It is evaluated at replay from the **single stored bundle** — sample the acquisition at a set of polar angles, fit `R_l`, convolve — so it costs nothing extra to store.
+
+**It is an analytical model, not simulated dispersion. The caveats are the point:**
+
+- **No exchange.** It superposes **independent, non-exchanging** fibre populations: water never crosses between differently-oriented fascicles. Genuinely dispersed physics (crossing geometry, inter-fascicle exchange) changes the *trajectory* and requires a new walk in a dispersed substrate — it is not recoverable by replay.
+- **Homogeneous copies.** Every fascicle is the *same* stored bundle rotated — one radius distribution, `D`, packing, and relaxation. Per-population heterogeneity is not represented.
+- **Scope.** The zonal convolution covers the **diffusion signal** (§6.1) and separable per-compartment relaxation (§6.2–6.3). It does **not** cover off-resonance/susceptibility dispersion (§6.4 would additionally require rotating the field basis per orientation) or MT dispersion (§6.5, which compounds the no-exchange caveat); a replayer MUST refuse those rather than convolve them.
+- **Convergence.** The SH order `lmax` must resolve both the response and the ODF; an under-resolved order biases the convolution.
+
+Because it stores nothing and changes no replay semantics, it needs no envelope flag; a producer MAY note an intended dispersion in `provenance`. A replayer offering it **MUST** present the result as an analytical dispersion model, not Monte-Carlo ground truth.
+
 ---
 
 ## 7. Capability tiers
