@@ -25,7 +25,7 @@ CHANNEL_KEYS = {
                   ["modes", "coeff_mean", "coeff_cov"], ["modes", "coeff_quantiles"]],
     "compartment": [["compartment"], ["comp_rle_vals", "comp_rle_lens", "comp_rle_counts"]],
     "boundary_local_time": [["boundary_local_time"], ["dlog_boundary_unit"],
-                            ["blt_counts", "blt_cols", "blt_qvals"]],
+                            ["blt_counts", "blt_cols", "blt_qvals"], ["blt_dense_q"]],
     "bound_fraction": [["bound_fraction"], ["bound_frac"],
                        ["bfrac_rle_vals", "bfrac_rle_lens", "bfrac_rle_counts"]],
     "spin_weights": [["spin_weights"]],
