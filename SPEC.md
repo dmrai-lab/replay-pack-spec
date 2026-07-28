@@ -241,7 +241,7 @@ With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-reso
 
 ### 6.6 The acquisition is a replay knob (no sequence is baked into the pack)
 
-A pack stores **no** assumption about the pulse sequence. The full acquisition — the gradient waveform `G(t)` **and** the RF / `B1` pulses (their flip angle, phase, shape, and **timing**) — is supplied at replay. Moving the refocusing pulse when the diffusion time or `TE` changes, or switching GRE↔spin-echo↔CPMG↔stimulated-echo/PGSTE, is a replay-time choice against the one stored walk, never a re-walk. (Spatially *uniform* `B1` pulses need nothing stored; a spatially-varying transmit field `B1(r)` — inhomogeneity — is the one exception, a stored-map extension, §14.)
+A pack stores **no** assumption about the pulse sequence. The full acquisition — the gradient waveform `G(t)` **and** the RF / `B1` pulses (their flip angle, phase, shape, and **timing**) — is supplied at replay. Moving the refocusing pulse when the diffusion time or `TE` changes, or switching GRE↔spin-echo↔CPMG↔stimulated-echo/PGSTE, is a replay-time choice against the one stored walk, never a re-walk. (Spatially *uniform* `B1` pulses need nothing stored; `B1` **inhomogeneity** is a scalar flip-angle knob per pack — becoming a per-voxel scalar only when packs are tiled into a mesoscopic grid — not a within-substrate field; §14.)
 
 For the **scalar-phase tiers** (§6.1, §6.4) the sequence enters through a per-step **transverse-phase gate** `s(t_k)` that the replayer derives from the sequence:
 
@@ -480,7 +480,10 @@ Conformance is layered: a producer MAY implement only C0; a replayer MAY impleme
 - `rpk_schema_version` is semantic. **Minor** bumps add OPTIONAL channels/keys; a replayer MUST ignore channels and metadata keys it does not recognize (forward-compatible). **Major** bumps may change required semantics.
 - New channels intended for later standardization SHOULD be introduced under the `x_` prefix first.
 - New tiers extend the table in §7 without altering existing tiers.
-- **Recognized extensions** (permitted by the invariant, not yet standardized): a spatially-varying **transmit-field map** `B1(r)` feeding the Bloch flip-angle — the transmit-side analog of the C3 susceptibility maps (§6.4); it is needed *only* for `B1` **inhomogeneity**, since uniform pulses are already replay knobs (§6.6), and like arbitrary RF it lives in the vector-Bloch path (§6.5). Also recognized: a fully general rank-2 **susceptibility-tensor** field (§5.2, §6.4), and membrane **permeability/crossing** should it ever become a replayable quantity (§7).
+- **Recognized extensions** (permitted by the invariant, not yet standardized):
+  - **Transmit-field (`B1+`) inhomogeneity.** Within a single substrate `B1` is uniform — it varies on the RF-wavelength (cm) scale, far larger than a μm–mm pack — so it is **not** a stored map but a **scalar flip-angle knob** `α → κ_B1·α` on the vector-Bloch path (§6.5), the transmit-side analog of the `B0` *field-strength* scalar (not of the susceptibility map). Uniform pulses are already replay knobs (§6.6); the knob adds only the inhomogeneity scale. When packs are tiled into a **mesoscopic voxel grid** (a brain-sized volume), `B1` inhomogeneity becomes a **per-voxel scalar map** — one `κ_B1` per voxel position, applied uniformly inside each voxel's substrate — which is a property of the *assembly*, not of a single pack.
+  - a fully general rank-2 **susceptibility-tensor** field (§5.2, §6.4);
+  - membrane **permeability/crossing**, should it ever become a replayable quantity (§7).
 
 ---
 
