@@ -3,7 +3,7 @@ title: "The Replay Pack Specification (.rpk): an open format for replayable Mont
 message: "If you implement, emit, or consume Replay Packs, please cite this specification."
 type: standard
 version: 0.1.0
-date-released: 2026-07-27
+date-released: 2026-07-28
 abstract: >
   A portable, code-free file format and replay model that stores the state of a
   Monte-Carlo random walk through a diffusion-MRI substrate so the measured signal can
