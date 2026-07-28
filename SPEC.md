@@ -1,6 +1,6 @@
 # The Replay Pack Specification (`.rpk`)
 
-**Version:** 0.1.2 (draft for comment)
+**Version:** 0.1.3 (draft for comment)
 **Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified.
 **Container schema described:** `rpk_schema_version = "1.1"`
 **License of this document:** CC-BY-4.0. **License of the reference code:** Apache-2.0.
