@@ -149,9 +149,9 @@ def main(path):
         meta = json.loads(_h.get("rpk") or _h.get("json") or "{}")
     env = _norm_env(meta)
     tiers = [name for name, on in [
-        ("T0-Gradient", env.get("gradient")), ("T1-BulkRelax", env.get("bulk_relaxation")),
-        ("T2-Surface", env.get("surface_relaxivity")), ("T3-Field", env.get("field")),
-        ("T4-MT", env.get("magnetization_transfer"))] if on]
+        ("C0-Gradient", env.get("gradient")), ("C1-BulkRelax", env.get("bulk_relaxation")),
+        ("C2-Surface", env.get("surface_relaxivity")), ("C3-Field", env.get("field")),
+        ("C4-MT", env.get("magnetization_transfer"))] if on]
     print(f"pack id:    {meta.get('id')}")
     print(f"schema:     {meta.get('rpk_schema_version')}  codec: {meta.get('compression', {}).get('method')}")
     print(f"tiers:      {', '.join(tiers) or '(none)'}")

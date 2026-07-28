@@ -59,4 +59,4 @@ if __name__ == "__main__":
     pos = make_free_diffusion_walk(n_walkers=20000, n_t=n_t, dt=dt, D=D, seed=0)
     meta = write_pack("free_diffusion.rpk", pos, dt, D, seed=0, pack_id="examples/free-diffusion")
     print(f"wrote free_diffusion.rpk  N_w={pos.shape[0]} N_t={pos.shape[1]} "
-          f"dt={dt*1e3:.2f}ms D={D*1e9:.1f}e-9  (Tier 0, identity codec)")
+          f"dt={dt*1e3:.2f}ms D={D*1e9:.1f}e-9  (Tier C0, identity codec)")

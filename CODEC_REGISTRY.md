@@ -1,18 +1,19 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.1.0 (draft).
+**Registry version:** 0.1.1 (draft).
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
-The core [`SPEC.md`](SPEC.md) §9 defines only the codec *interface* — a codec is declared in
-`compression.method`, decodes to the §5 array contract, `identity` is the lossless baseline,
-and lossy codecs self-certify against the MC noise floor. This registry lists the **concrete
-codecs** and the **exact safetensors tensor keys** each stores. It is a **storage /
-inference-optimization** layer: a codec changes only *how* a channel is stored, never *what it
-means* — the meaning of every channel, and of the replayed signal, is fixed by the core spec
-(§5–6) and is independent of any codec. The registry is kept separate, and versioned
-independently, so codecs can be added, revised, or deprecated **without changing the frozen
-core format**.
+The core [`SPEC.md`](SPEC.md) §9 defines the two storage concepts and their rules: position
+**representations** (§9.1) and their exactness *domain* (§9.2), per-channel **storage codecs**
+(§9.3), and the interface every method MUST satisfy (§9.4) — declared in `compression.method`,
+decodes to the §5 array contract, `identity` baseline, lossy self-certifies. This registry lists
+the **concrete representations and codecs** and the **exact safetensors tensor keys** each stores.
+It is a **storage / inference-optimization** layer: a method changes only *how* a channel is
+stored (and, for a representation, how cheaply it replays), never *what it means* — the meaning of
+every channel and of the replayed signal is fixed by the core (§5–6). The registry is versioned
+independently so methods can be added, revised, or deprecated **without changing the frozen core
+format**.
 
 A conformant replayer implements the `identity` codec and MAY implement any subset of the
 others; it MUST refuse (never guess) a `method` it does not recognize (SPEC §9, §13).
@@ -37,21 +38,21 @@ Every channel is stored raw under its own name.
 | `bound_fraction` | `bound_fraction` |
 | `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` |
 
-### Reference-implementation codecs (dmipy-sim)
+### Position representations (dmipy-sim)
 
-These are reference-implementation codecs and MAY be revised; each changes only how a channel
-is stored, never what it decodes to (§5). Each applies to the `positions` channel unless noted;
-params live in `compression` (e.g. `K`).
+These reference-implementation **representations** of `positions` (SPEC §9.1) MAY be revised;
+each changes only how positions are stored and how cheaply they replay, never what they decode
+to (§5). Params live in `compression` (e.g. `K`).
 
 | `method` | Class | Stored keys | Notes |
 |---|---|---|---|
 | `temporal_dct` | walker-preserving, lossless in-band | `dct_coeffs` | temporal band-limit; keeps all per-walker channels |
 | `lowrank` | walker-preserving | `modes`, `mean`, `coeffs` | KL/SVD modes + exact per-walker coefficients; lossless at full rank |
-| `gaussian` | **distributional** | `modes`, `mean`, `coeff_mean`, `coeff_cov` | resamples walkers ⇒ Gradient tier only (SPEC §9 walker-preserving rule) |
+| `gaussian` | **distributional** | `modes`, `mean`, `coeff_mean`, `coeff_cov` | resamples walkers ⇒ Gradient tier only (SPEC §9.4 walker-preserving rule) |
 | `marginal` | **distributional** | `modes`, `mean`, `coeff_quantiles` | resamples walkers ⇒ Gradient tier only |
 
-The dense per-walker physics channels each have their own structure-matched codec (they are
-**not** positions-like, so the position codecs above do not apply):
+The per-walker physics channels each use a structure-matched **storage codec** (SPEC §9.3) —
+they are **not** positions-like, so the representations above do not apply:
 
 | Decoded channel | Codec | Stored keys | Notes |
 |---|---|---|---|
@@ -74,12 +75,16 @@ respectively, are the structure-matched choices.
 ## Distributional codecs are Gradient-only
 
 A codec marked **distributional** (recognizable by the presence of `coeff_mean`/`coeff_cov`/
-`coeff_quantiles`) resamples walkers and breaks per-walker channel alignment. Per SPEC §9, a
+`coeff_quantiles`) resamples walkers and breaks per-walker channel alignment. Per SPEC §9.4, a
 pack using one MUST NOT carry any per-walker channel and MUST declare only the Gradient tier.
 
-## Replay in coefficient space (optional optimization)
+## Replay in coefficient space (the representation mechanics)
 
-The `lowrank` and `temporal_dct` codecs store positions as `r = M·c + μ` with a basis `M`
+This is the mechanics of the position *representation* defined in SPEC §9.1; its exactness
+*domain* — raw exact to the `Δt` grid, a full basis coincident with raw, a truncated basis exact
+only within its span — is SPEC §9.2 and is not restated here.
+
+The `lowrank` and `temporal_dct` representations store positions as `r = M·c + μ` with a basis `M`
 (KL/SVD modes or the DCT matrix) **shared across walkers** and per-walker coefficients `c`.
 Because the gradient phase (SPEC §6.1) is **linear** in position, it factors through the basis:
 
@@ -99,7 +104,7 @@ The **off-resonance/susceptibility** operation (§6.4) samples a field map at `r
 magnetization step by step; both REQUIRE the decoded positions. A replayer therefore takes the
 coefficient-space fast path for the position-linear tiers (Gradient, Bulk-relaxation, Surface)
 and falls back to decoded positions for the Field and Magnetization-transfer tiers. This is one reason to
-prefer a linear-basis position codec: it is not only smaller but also directly replayable.
+prefer a linear-basis **representation**: it is not only smaller but also directly replayable — the IR property of SPEC §9.1.
 
 The `identity` codec stores positions raw, so it has no coefficient space; the fast path applies
 only to codecs that expose a shared linear basis (`modes`/`dct_coeffs`). Distributional codecs
@@ -110,5 +115,5 @@ directly.
 
 A new codec entry MUST document: `method` name, class (walker-preserving vs distributional),
 its stored tensor keys, its parameters, and whether it is lossless or (if lossy) how its
-`fidelity` is measured (SPEC §9). Add it here and bump the registry version; the core
+`fidelity` is measured (SPEC §9.4). Add it here and bump the registry version; the core
 `rpk_schema_version` does **not** change for a registry-only addition.

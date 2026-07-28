@@ -1,6 +1,6 @@
 # The Replay Pack Specification (`.rpk`)
 
-**Version:** 0.1.0 (draft for comment)
+**Version:** 0.1.1 (draft for comment)
 **Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified.
 **Container schema described:** `rpk_schema_version = "1.1"`
 **License of this document:** CC-BY-4.0. **License of the reference code:** Apache-2.0.
@@ -20,7 +20,7 @@ This specification defines:
 3. the **replay operations** — the exact, reference math each channel feeds, so that *any* conformant replayer reproduces *any* conformant pack (§6);
 4. **capability tiers** — how a generator that models only some physics declares a partial but fully interoperable pack (§7);
 5. the **generator invariants** a producer MUST satisfy (§8);
-6. **codecs / compression** as an *orthogonal* per-channel encoding layer — a pack is well-defined with raw, uncompressed channels (§9);
+6. **representations and codecs** — how `positions` are stored (raw samples or a linear *representation*) and how channels are encoded, both orthogonal to a channel's meaning (§9);
 7. the **metadata schema**, **declared envelope**, and **self-certification** (§10–11);
 8. the **container format** and **conformance rules** (§12–13).
 
@@ -47,8 +47,9 @@ Producing a converged random walk through realistic microstructure is the expens
 - **Replay operation.** A deterministic function mapping (channels, knobs) → signal (§6).
 - **Capability tier.** A named group of channels that unlocks one class of replay (§7).
 - **Declared envelope.** The region of knob space over which the producer certifies the pack's replay to a stated fidelity (§11).
-- **Codec.** A per-channel, reversible-or-lossy encoding of a channel's array (§9). The identity codec (raw array) is always valid.
-- **MC noise floor.** The irreducible variance of a finite-`N_w` ensemble estimate; the reference against which any lossy codec's error is judged (§9.3).
+- **Representation.** The *form* `positions` are stored in — raw samples (the *source*) or a linear basis (an intermediate form, cf. a compiler IR) chosen so replay is cheap on it (§9.1). It changes replay cost and the exactness *domain* (§9.2), never a pack's meaning.
+- **Codec.** A per-channel, reversible-or-lossy **storage** encoding of a channel's array (§9.4). The identity codec (raw array) is always valid.
+- **MC noise floor.** The irreducible variance of a finite-`N_w` ensemble estimate; the reference against which any lossy codec's error is judged (§9.4).
 
 ---
 
@@ -62,12 +63,22 @@ All of those quantities enter the *signal* only through a phase or a (log-)weigh
 
 *Magnetization transfer is split.* The MT **binding kinetics** (binding rate and dwell time) are **not** knobs: a bound spin is frozen for its dwell, so they change the trajectory itself and are fixed at walk time — recorded through the `bound_fraction` schedule (§5.2), exactly as membrane permeability (§7) is a walk-time property. Only the **bound-pool relaxation/off-resonance** (`T2_b`, `T1_b`, `Δω_b`) are replay knobs (§6.5).
 
-Two consequences are used throughout:
+Three consequences are used throughout:
 
 - **(TE-prefix property.)** A walk stored to `T_max` contains every shorter echo time as a leading prefix: the first `N_t' = ⌈TE'/Δt⌉` saves are a valid, converged walk to `TE' ≤ T_max`. A replayer MAY slice.
 - **(Separation of state and knobs.)** A pack stores only *walk state*. It never stores a signal, a b-value, or a waveform. Signals are always derived at replay time.
+- **(Resolution limit.)** The save step `Δt` sets the temporal bandwidth of every replay: a pack reproduces any `G(t)` resolvable on the `Δt` grid (Nyquist, up to `1/(2Δt)`); structure finer than `Δt` was never stored and cannot be replayed. This is a property of the stored walk, independent of how positions are represented (§9).
 
-The invariant defines the boundary of the format. Anything a producer cannot recover by replay from stored channels — most importantly **a change of geometry, `D`, or seed** — is **out of scope**: it requires a new walk and hence a new pack. Diffusivity is therefore recorded as a fixed pack property (§10), not a knob.
+The invariant defines the boundary of the format. The following are **fixed at walk time — not replay knobs**; changing any requires a new walk and a new pack:
+
+- the **substrate geometry**;
+- the **diffusivity** `D`;†
+- the **random seed**;
+- **membrane permeability / crossing** — a crossing is a per-event random draw that alters the trajectory (§7);
+- the **MT binding kinetics** (rate, dwell) — recorded in `bound_fraction` (§6.5);
+- the **save step** `Δt` — the temporal resolution of the stored walk (resolution limit, above).
+
+† `D` sets the trajectory, so it is recorded as a fixed pack property (§10). The sole exception is the trivial Brownian rescaling — a walk at `D` over `t` equals one at `D/α` over `αt` — which holds **only** in free diffusion, or when the geometry length-scales *and* the save grid `Δt` are co-scaled by the same `α`. In restricted geometry the fixed wall scales break it, so `D` is **not** a general replay knob.
 
 ---
 
@@ -161,7 +172,7 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 
 These define the meaning of the channels. A **conformant replayer** MUST reproduce these operations (to the decoded arrays' numerical precision). `γ` is the proton gyromagnetic ratio. Sums over `k` run on the save grid with weight `Δt` (trapezoidal or left-rule is producer-agnostic *provided the producer used the same rule to converge the walk*; left-rule is the reference).
 
-The operations split by their dependence on position: the gradient phase (§6.1) and the relaxation/surface log-weights (§6.2–6.3) are **linear** in the stored positions, whereas the off-resonance field-map lookup (§6.4) and the Bloch/MT evolution (§6.5) are **nonlinear**. This is informative only — the signal is identical either way — but it lets a replayer evaluate the position-linear operations directly in a linear codec's coefficient space without decoding the full trajectory (see `CODEC_REGISTRY.md`, "Replay in coefficient space").
+The operations split by their dependence on position: the gradient phase (§6.1) and the relaxation/surface log-weights (§6.2–6.3) are **linear** in the stored positions, whereas the off-resonance field-map lookup (§6.4) and the Bloch/MT evolution (§6.5) are **nonlinear**. This is informative only — the signal is identical either way — but it lets a replayer evaluate the position-linear operations directly in a linear *representation*'s coefficient space without decoding the full trajectory (§9.1; exactness domain §9.2).
 
 ### 6.1 Gradient phase (Gradient tier — always available)
 
@@ -177,7 +188,7 @@ and the signal is the weighted ensemble mean
 S(G) = Σ_i w_i · e^{i φ_i} / Σ_i w_i .
 ```
 
-This yields any b-value, any b-tensor, OGSE/PGSE/arbitrary `G(t)`, and (by sweeping `q`) the ensemble average propagator. **No stored quantity depends on `G`** — this is the whole point.
+This yields any b-value, any b-tensor, OGSE/PGSE/arbitrary `G(t)` **resolvable on the `Δt` grid** (Nyquist; the resolution limit of §3), and (by sweeping `q`) the ensemble average propagator. **No stored quantity depends on `G`** — this is the whole point.
 
 ### 6.2 Bulk relaxation `T2`/`T1` (Bulk-relaxation tier)
 
@@ -269,15 +280,15 @@ Because it stores nothing and changes no replay semantics, it needs no envelope 
 
 A producer that models only part of the physics still emits a **fully interoperable** pack; it simply declares fewer tiers. Tiers are **independent** — a pack MAY declare Field without Relaxation.
 
-Metadata flags use **explicit, self-describing names** (§10).
+Tiers are named **`C0`–`C4`** (for *capability*) — deliberately not `T#`, which would collide with the relaxation times `T1`/`T2`. Metadata flags use **explicit, self-describing names** (§10).
 
 | Tier | Required channels (beyond `positions`) | Replay unlocked | Metadata flag(s) |
 |---|---|---|---|
-| **T0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
-| **T1 Bulk relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `bulk_relaxation: true` |
-| **T2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
-| **T3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, susceptibility, and (with the ℓ=2 maps) orientation | `field: true` |
-| **T4 Magnetization transfer** | `bound_fraction` | §6.5 — magnetization transfer (vector-Bloch) | `magnetization_transfer: true` |
+| **C0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
+| **C1 Bulk relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `bulk_relaxation: true` |
+| **C2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
+| **C3 Field** | `susc_field_{C,S,0}` (+ `cell_size`, susceptibility scale) | §6.4 — any `B0`, susceptibility, and (with the ℓ=2 maps) orientation | `field: true` |
+| **C4 Magnetization transfer** | `bound_fraction` | §6.5 — magnetization transfer (vector-Bloch) | `magnetization_transfer: true` |
 
 The declared tier set lives in `replay_envelope` (§10). A replayer asked for a knob outside the declared tiers MUST refuse with a clear "capability not present" error, **not** silently return an approximate result (§11, §13).
 
@@ -308,20 +319,44 @@ MUST use id `0` for the extra-cellular/free pool and MUST list every other id wi
 MUST honor §4 exactly. A producer using non-SI internal units MUST convert on write.
 
 ### 8.7 Honest envelope
-MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST attach a `fidelity` self-report (§9.3, §11). A producer MUST NOT declare a tier whose channel it did not actually populate.
+MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST attach a `fidelity` self-report (§9.4, §11). A producer MUST NOT declare a tier whose channel it did not actually populate.
 
 ### 8.8 Equilibrium start for magnetization-transfer packs
-A magnetization-transfer-tier (T4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the magnetization-transfer tier; the other tiers have no such initial-condition transient.
+A magnetization-transfer-tier (C4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the magnetization-transfer tier; the other tiers have no such initial-condition transient.
 
 *Reference implementation.* dmipy-sim exposes this as `equilibrate_binding = 'auto' | 'burnin' | 'fast' | 'off'`: `'burnin'` (the `'auto'` default when MT is on) runs an **adaptive RF-off burn-in in ~dwell-sized chunks until the ensemble occupancy plateaus** (geometry-agnostic, with a convergence flag); `'fast'` seeds the equilibrium occupancy analytically from a known `S/V` when that is position-invariant; `'off'` keeps the legacy all-free start. A producer MAY use any method that satisfies the equilibrium-start requirement above.
 
 ---
 
-## 9. Codecs and compression (orthogonal layer)
+## 9. Representations and codecs (orthogonal to meaning)
 
-**The format does not depend on compression.** Every channel is defined by its *decoded* array (§5). How that array is *stored* is a per-channel **codec** choice. The identity codec — the raw array — is the normative baseline, and a pack stored entirely with identity codecs is fully conformant. This section defines only the codec **interface**; the concrete codecs and their exact stored-key layouts live in a separate, independently versioned document, [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md), so that compression methods can be added or revised without touching this frozen core.
+**A channel's *meaning* is its decoded array (§5); how it is stored is orthogonal to that meaning.** A pack stored entirely as raw arrays (the `identity` baseline) is fully conformant. Two independent storage choices exist, and neither changes what a pack *means* — only its size and its replay *cost*:
 
-A conformant codec MUST satisfy four rules:
+- a **representation** of `positions` — the *form* the trajectory is stored in (§9.1);
+- a per-channel **storage codec** — a reversible-or-lossy encoding of any channel's array (§9.4).
+
+Both are declared in metadata `compression`, both MUST decode to the §5 contract, and the concrete methods with their exact stored-key layouts live in the separately versioned [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md), so they evolve without touching this frozen core.
+
+### 9.1 Representation of positions — source vs. intermediate form
+
+Positions may be stored as **raw samples** — the *source* — or projected onto a **linear basis** `r = M·c + μ` (a shared basis `M`, per-walker coefficients `c`). This is **not mere compression**: it is a change of representation, closer to a compiler's **intermediate representation (IR)** than to a zip file. The raw samples are the source; the basis is the form chosen because the operation that runs on it — replay — is *cheaper* on it. Because the gradient phase (§6.1) and the separable relaxation/surface log-weights (§6.2–6.3) are **linear** in position, replay in the basis is a projection onto `K` coefficients instead of an `O(N_t)` integral per walker, evaluated without ever reconstructing the trajectory (§6 preamble; mechanics in the registry). The nonlinear operations — susceptibility (§6.4) and Bloch/MT (§6.5) — decode to raw first.
+
+### 9.2 Exactness and its domain
+
+A representation's exactness has a **domain** — the single sharpest point to state plainly:
+
+- **Raw samples** are exact for any `G(t)` resolvable on the `Δt` grid (the resolution limit of §3).
+- **A linear basis** is exact for any `G(t)` whose induced phase lies in the **span** of its `K` modes. A full, in-band basis spans everything `Δt` can resolve and therefore **coincides with raw** — exact wherever the source is. A **truncated** basis (`K` below full rank) is exact only **within its span**; outside it the error is bounded and MUST be certified by `fidelity` (§9.4).
+
+So raw is exact to the grid, a full basis matches raw, and a truncated basis trades exactness outside its span for size and replay speed — and declares that trade in `fidelity`.
+
+### 9.3 Storage codecs
+
+The non-position channels (`compartment`, `boundary_local_time`, `bound_fraction`, …) use per-channel **storage codecs** — run-length, quantization, sparse/dense — matched to each channel's structure. These are pure storage: they decode to the §5 array and do not change replay cost.
+
+### 9.4 Interface rules
+
+A conformant representation or codec MUST satisfy four rules:
 
 1. **Declared.** The codec is named (with any parameters) in metadata `compression`, e.g. `{"method": "identity"}` or `{"method": "lowrank", "K": 64, "walker_preserving": true}`. A replayer that does not recognize the `method` MUST refuse (never guess). Recognized method names and their stored tensor keys are defined in the registry.
 2. **Decodes to the contract.** Decoding MUST yield the exact channel array of §5 (dtype/shape/units). Channel *presence* for tiers (§7) and conformance (§13) is satisfied by the channel's raw key **or** the registry-defined stored keys of its codec.
@@ -334,7 +369,7 @@ One structural rule belongs in the core because it constrains tiers, not any par
 
 > **Walker-preserving requirement.** A codec that **resamples walkers** (a *distributional* codec — it stores a coefficient *distribution*, not per-walker coefficients) breaks per-walker channel alignment. Such a pack **MUST NOT** carry any per-walker channel (`compartment`, `boundary_local_time`, `bound_fraction`, `spin_weights`) and **MUST** declare only the Gradient tier. Per-walker channels REQUIRE a walker-preserving codec.
 
-Compression is thus a *quality claim about a channel*, never a change to the replay contract. See `CODEC_REGISTRY.md` for the current registered codecs (`identity`, and reference-implementation methods) and their stored-key tables.
+A channel's storage is thus a *size/speed/quality choice*, never a change to the replay contract (§5–6). See [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) for the registered representations and storage codecs and their stored-key tables.
 
 ---
 
@@ -366,11 +401,11 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "method": "lowrank", "K": 64, "walker_preserving": true
   },
   "replay_envelope": {                   // REQUIRED — declared capabilities + domain
-    "gradient": true,                    // T0 — always true
-    "bulk_relaxation": true,             // T1 — intrinsic per-compartment T1/T2
-    "surface_relaxivity": false,         // T2 — any surface relaxivity
-    "field": true,                       // T3 — any B0 / susceptibility off-resonance; orientation too when the ℓ=2 maps are present
-    "magnetization_transfer": false,     // T4 — magnetization transfer (vector-Bloch)
+    "gradient": true,                    // C0 — always true
+    "bulk_relaxation": true,             // C1 — intrinsic per-compartment T1/T2
+    "surface_relaxivity": false,         // C2 — any surface relaxivity
+    "field": true,                       // C3 — any B0 / susceptibility off-resonance; orientation too when the ℓ=2 maps are present
+    "magnetization_transfer": false,     // C4 — magnetization transfer (vector-Bloch)
     "diffusivity_fixed": true,           // D is a fixed pack property, not a knob
     "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0] }
   },
@@ -400,7 +435,7 @@ Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` 
 A pack is a **certificate**, not a black box. Two objects make its guarantees explicit:
 
 - **`replay_envelope`** — the *domain of validity*: which tiers, and the acquisition/field range (`b_max`, OGSE periods, `B0_list`, …) over which the producer stands behind the pack. A request inside the envelope is guaranteed; a request outside is a *known limit*, and the replayer MUST surface it as such (§13), never silently extrapolate.
-- **`fidelity`** — the *measured* error of any lossy encoding against the noise floor (§9.3).
+- **`fidelity`** — the *measured* error of any lossy encoding against the noise floor (§9.4).
 
 The substrate bank (a separate service) accepts a pack by validating it against this specification (§13) and MAY re-measure `fidelity` independently.
 
@@ -425,7 +460,7 @@ A file is a **conformant Replay Pack** iff:
 2. it contains the REQUIRED `positions` channel (raw or under a declared, decodable codec), with `(N_w, N_t, 3)` shape after decode;
 3. every tier flagged `true` in `replay_envelope` has all its §7 channels present and its §10 fields populated;
 4. all per-walker/per-save channels share `(N_w, N_t)` with `positions`;
-5. if any codec is lossy, a `fidelity` object is present (§9.3);
+5. if any codec is lossy, a `fidelity` object is present (§9.4);
 6. `license` and `citation` are present.
 
 A **conformant replayer**:
@@ -434,9 +469,9 @@ A **conformant replayer**:
 - decodes every codec it claims to support to the §5 array contract before applying §6;
 - for any requested knob outside the pack's `replay_envelope`, returns a **capability/domain error**, never a silent approximation (§11).
 
-A **conformant producer** satisfies §8 and §9.3.
+A **conformant producer** satisfies §8 and §9.4.
 
-Conformance is layered: a producer MAY implement only T0; a replayer MAY implement only T0; they still interoperate on T0.
+Conformance is layered: a producer MAY implement only C0; a replayer MAY implement only C0; they still interoperate on C0.
 
 ---
 
@@ -463,7 +498,7 @@ A pack carries data only. Safetensors executes no code on load, and the metadata
 
 ---
 
-## Appendix A. Minimal conformant pack (Tier 0)
+## Appendix A. Minimal conformant pack (Tier C0)
 
 Arrays: `positions` `(N_w, N_t, 3)` float32.
 Metadata: `rpk_schema_version`, `id`, `walk_params{n_walkers,n_t,dt_traj,T_max,diffusivity,seed}`, `compression{method:"identity"}`, `replay_envelope{gradient:true, ...all others false...}`, `license`, `citation`.
