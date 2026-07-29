@@ -1,7 +1,7 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.1.1 (draft).
+**Registry version:** 0.2.0 (draft) — adds the `susc_field_basis` channel codec (SPEC §6.4.1).
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
 The core [`SPEC.md`](SPEC.md) §9 defines the two storage concepts and their rules: position
@@ -37,6 +37,7 @@ Every channel is stored raw under its own name.
 | `boundary_local_time` | `boundary_local_time` |
 | `bound_fraction` | `bound_fraction` |
 | `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` |
+| `susc_field_basis` | `susc_field_basis` `(N_w, N_t, 13)` |
 
 ### Position representations (dmipy-sim)
 
@@ -60,6 +61,7 @@ they are **not** positions-like, so the representations above do not apply:
 | `compartment` (fractional occupancy) | **quantized RLE** | same keys + meta `fractional:true, Q, scale` | **permeable** substrates: a walker crossing a membrane mid-save has a fractional time-in-compartment, so the channel is near-binary occupancy in `[0, scale]` (∈[0,1] for 2 compartments) rather than integer labels. Quantize to `Q` levels and RLE (same structure as `bound_fraction`); integer RLE would lossily int-cast the fractions. |
 | `bound_fraction` | **quantized RLE** | `bfrac_rle_vals` (uint8, `Q≤256`), `bfrac_rle_lens` (uint16), `bfrac_rle_counts` | occupancy is ~binary with long dwell/free runs. Quantize `[0,1]→{0..Q-1}` (meta `Q`, default 256), RLE rows. Measured **~7×**, replay error ≪ MC floor. Lossy only to the quantization step. |
 | `boundary_local_time` | **density-aware**: sparse CSR **or** dense int8 (meta `mode`) | sparse: `blt_counts`,`blt_cols`,`blt_qvals`; dense: `blt_dense_q` (int8) | not low-rank (idiosyncratic wall contacts). Density varies by substrate: isolated fibres ~15% nonzero → **sparse** (~3×); packed white matter ~55% → sparse would exceed raw float16, so **dense int8** (1 B/entry, ½ of raw f16, density-independent). Encoder picks the smaller; per-save values kept (any sequence gate, §6.6); quantization within the MC floor. |
+| `susc_field_basis` | raw **float16** baseline (lossy only to f16) | `susc_field_basis` `(N_w, N_t, 13)` | Per-walker Field basis (SPEC §6.4.1). The 13 components vary smoothly along a trajectory, so a shared linear basis over `(N_t, 13)` (à la `lowrank`) is the intended size optimization — registered later once measured; f16 raw is the current baseline and is walker-preserving. |
 
 Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channels[<channel>]` in
 the metadata. The reference implementation also historically stored `boundary_local_time` raw
@@ -99,12 +101,16 @@ separable per-walker sums that need no position decode. This is a **pure perform
 optimization**: the result MUST equal the decode-then-replay value (SPEC §6), and it changes
 neither the stored keys nor conformance.
 
-The **off-resonance/susceptibility** operation (§6.4) samples a field map at `r mod cell_size`
-— a **nonlinear** function of position — and the **Bloch/MT** operation (§6.5) evolves
-magnetization step by step; both REQUIRE the decoded positions. A replayer therefore takes the
-coefficient-space fast path for the position-linear tiers (Gradient, Bulk-relaxation, Surface)
-and falls back to decoded positions for the Field and Magnetization-transfer tiers. This is one reason to
-prefer a linear-basis **representation**: it is not only smaller but also directly replayable — the IR property of SPEC §9.1.
+The **grid-map** off-resonance/susceptibility operation (§6.4) samples a field map at
+`r mod cell_size` — a **nonlinear** function of position — and the **Bloch/MT** operation (§6.5)
+evolves magnetization step by step; both REQUIRE the decoded positions. A replayer therefore
+takes the coefficient-space fast path for the position-linear tiers (Gradient, Bulk-relaxation,
+Surface) and falls back to decoded positions for the grid-map Field and Magnetization-transfer
+tiers. (The **per-walker** Field basis of §6.4.1 is the exception: it is *pre-sampled* per walker,
+so its phase is a per-walker separable sum — like the surface log-weight — needing **no** position
+decode, and it composes with the coefficient-space fast path.) This is one reason to prefer a
+linear-basis **representation**: it is not only smaller but also directly replayable — the IR
+property of SPEC §9.1.
 
 The `identity` codec stores positions raw, so it has no coefficient space; the fast path applies
 only to codecs that expose a shared linear basis (`modes`/`dct_coeffs`). Distributional codecs

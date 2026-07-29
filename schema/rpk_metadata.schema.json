@@ -27,8 +27,19 @@
         "T_max": {"type": "number", "exclusiveMinimum": 0, "description": "(n_t-1)*dt_traj (s)."},
         "diffusivity": {"type": ["number", "null"], "description": "Fixed free diffusivity (m^2/s). Not a knob."},
         "seed": {"type": "integer"},
-        "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field tier."},
-        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale the Field maps are normalized to (SPEC §6.4); present iff Field tier. A purely isotropic source uses susc_field_0 alone."}
+        "boundary": {"type": ["string", "null"], "enum": ["periodic", "reflecting", "finite", null], "description": "Simulation-box boundary (SPEC §4.5): sets Field grid-map sampling (wrapped for periodic, clamped otherwise) and bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."},
+        "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field grid maps (susc_field_{0,C,S})."},
+        "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale the Field basis/maps are normalized to (SPEC §6.4); present iff Field tier. A purely isotropic source uses susc_field_0 / iso terms alone."},
+        "field_grid": {
+          "type": ["object", "null"],
+          "description": "Metadata for the per-walker Field basis susc_field_basis (SPEC §6.4.1); present iff that channel is used.",
+          "properties": {
+            "origin": {"type": "array", "items": {"type": "number"}, "description": "World coordinate (m) of the field grid corner used to sample the basis."},
+            "voxel_size": {"type": "array", "items": {"type": "number"}, "description": "Field grid voxel size (m)."},
+            "components": {"type": "array", "items": {"type": "string"}, "description": "Order of the 13 basis channels, e.g. [\"iso_local\",\"iso_P\",\"aniso_G\"]."},
+            "refocus": {"type": "string", "description": "How the susceptibility phase gate s(t_k) is applied at replay (SPEC §6.6)."}
+          }
+        }
       }
     },
     "per_comp": {
@@ -62,8 +73,8 @@
         "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
         "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
         "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
-        "field": {"type": "boolean", "description": "T3: replays static off-resonance / susceptibility (any B0 and susceptibility scale); substrate orientation relative to B0 is also a knob when the l=2 basis maps (susc_field_C/S) are present. An isotropic-only pack carries susc_field_0 alone."},
-        "magnetization_transfer": {"type": "boolean", "description": "T4: replays MT/exchange via vector-Bloch."},
+        "field": {"type": "boolean", "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale), and orientation relative to B0. Carried by EITHER the shared l=2 grid maps susc_field_{0,C,S} (SPEC §6.4) OR the per-walker susc_field_basis channel (SPEC §6.4.1, arbitrary 3-D morphology, full main-field direction)."},
+        "magnetization_transfer": {"type": "boolean", "description": "C4: replays MT. Carried by EITHER the per-walker bound_fraction channel (emergent, vector-Bloch, SPEC §6.5) OR the parametric two-pool `mt` pool descriptor (mean-field, Bloch-McConnell Z-spectrum/MTR, SPEC §6.5.1)."},
         "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
         "acquisition": {
           "type": "object",
@@ -84,6 +95,18 @@
         "floor_max": {"type": "number", "minimum": 0, "description": "Irreducible split-half MC noise floor for the same ensemble."},
         "within_2x_floor": {"type": "boolean", "description": "err_max <= 2*floor_max, i.e. the loss is below the MC noise (scientifically negligible)."},
         "battery": {"type": "string", "description": "The acquisition set over which err_max/floor_max were measured."}
+      }
+    },
+    "mt": {
+      "type": ["object", "null"],
+      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker bound_fraction) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
+      "properties": {
+        "model": {"type": "string", "description": "e.g. \"two_pool\"."},
+        "f_bound": {"type": "number", "minimum": 0, "maximum": 1, "description": "Equilibrium bound-pool fraction."},
+        "k_forward": {"type": "number", "minimum": 0, "description": "Forward exchange rate k_f = kappa*S/V (s^-1)."},
+        "T2_bound": {"type": "number", "exclusiveMinimum": 0, "description": "Bound-pool T2 (s)."},
+        "T1_bound": {"type": "number", "exclusiveMinimum": 0, "description": "Bound-pool T1 (s)."},
+        "S_over_V": {"type": "number", "minimum": 0, "description": "Myelin surface-to-free-volume ratio the pool was derived from (m^-1)."}
       }
     },
     "provenance": {

@@ -36,8 +36,8 @@ Everything follows from this invariant. Two things the spec states up front:
 | **C0 Gradient** | `positions` (required) | any `G(t)` resolvable at `Δt`, b-tensor, EAP |
 | **C1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **C2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
-| **C3 Field** | `susc_field_{C,S,0}` | any `B0`, orientation |
-| **C4 Magnetization transfer** | `bound_fraction` | magnetization transfer |
+| **C3 Field** | `susc_field_{C,S,0}` grid maps **or** `susc_field_basis` (per-walker, any 3-D morphology) | any `B0`, susceptibility, orientation |
+| **C4 Magnetization transfer** | `bound_fraction` (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack
 does not carry. (Tiers are named **C0–C4** — not `T#`, which would collide with the
@@ -45,9 +45,11 @@ relaxation times `T1`/`T2`.)
 
 ## Status
 
-**v0.1.1 (draft for comment).** The `1.x` container schema (channel names, metadata keys) is
-frozen; semantics may be clarified. The reference implementation (dmipy-sim, private for now)
-emits `rpk_schema_version = "1.1"`.
+**v0.2.0 (draft for comment).** The `1.x` container schema (channel names, metadata keys) is
+frozen; semantics may be clarified. `0.2.0` adds two OPTIONAL, backward-compatible
+representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
+plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
+implementation (dmipy-sim, private for now) emits `rpk_schema_version = "1.2"`.
 
 Intended trajectory: this spec is deposited (Zenodo) to **fix the format's definition and
 date**; reference tooling and example substrates open thereafter.
