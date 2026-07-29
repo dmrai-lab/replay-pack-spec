@@ -3,6 +3,7 @@ title: "The Replay Pack Specification (.rpk): an open format for replayable Mont
 message: "If you implement, emit, or consume Replay Packs, please cite this specification."
 type: standard
 version: 0.2.0
+doi: 10.5281/zenodo.21692505
 date-released: 2026-07-29
 abstract: >
   A portable, code-free file format and replay model that stores the state of a

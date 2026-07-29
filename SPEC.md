@@ -540,7 +540,7 @@ A pack carries data only. Safetensors executes no code on load, and the metadata
 - RFC 2119 — Key words for requirement levels.
 - safetensors — https://github.com/huggingface/safetensors
 - Croissant (MLCommons) — http://mlcommons.org/croissant/
-- This document is the citable, versioned reference for the format; its Zenodo DOI establishes priority on the format and infrastructure.
+- This document is the citable, versioned reference for the format; its Zenodo DOI ([10.5281/zenodo.21692505](https://doi.org/10.5281/zenodo.21692505)) establishes priority on the format and infrastructure.
 
 ---
 

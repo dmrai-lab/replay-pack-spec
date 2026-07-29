@@ -1,5 +1,7 @@
 # Replay Pack (`.rpk`) — an open format for replayable Monte-Carlo diffusion-MRI walks
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21692505.svg)](https://doi.org/10.5281/zenodo.21692505)
+
 A **Replay Pack** is a portable, code-free file that stores the *state of a Monte-Carlo
 random walk* through a diffusion-MRI substrate so that the measured signal can be
 **replayed** for many different acquisitions and physical settings — any gradient
