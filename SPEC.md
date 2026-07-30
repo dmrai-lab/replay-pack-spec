@@ -1,7 +1,7 @@
 # The Replay Pack Specification (`.rpk`)
 
-**Version:** 0.2.0 (draft for comment)
-**Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified. `0.2.0` adds two OPTIONAL, backward-compatible *representations* (a per-walker Field basis, §6.4.1; a parametric two-pool MT model, §6.5.1) and states the additive-shard property (§3); all `0.1.x` packs remain conformant.
+**Version:** 0.2.1 (draft for comment)
+**Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified. `0.2.1` adds one OPTIONAL, backward-compatible metadata key — the substrate's intrinsic orientation frame `walk_params.substrate_frame` (§4.2, §10) — so that B₀/gradient directions are defined relative to the tissue; packs omitting it are read as identity, so all `0.1.x`/`0.2.0` packs remain conformant. `0.2.0` added two OPTIONAL *representations* (a per-walker Field basis, §6.4.1; a parametric two-pool MT model, §6.5.1) and stated the additive-shard property (§3).
 **Container schema described:** `rpk_schema_version = "1.2"`
 **License of this document:** CC-BY-4.0. **License of the reference code:** Apache-2.0.
 
@@ -121,6 +121,7 @@ A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
 ### 4.2 Frame and positions
 - **Frame.** Positions are in a fixed **laboratory frame**. Substrate *orientation* is a replay knob applied by rotating the **waveform** (and field direction), never by rotating stored positions (which would invalidate periodic and field-map channels).
 - **Continuous.** Stored positions MUST be the *unwrapped* lab-frame trajectory (§8.2). Periodicity, if any, is a property of auxiliary field-map channels, not of `positions`.
+- **Substrate frame (intrinsic orientation).** Because orientation is applied by rotating the acquisition, a replayer needs to know how the substrate is oriented *within* the stored lab frame — otherwise "parallel" vs "perpendicular" B₀ (very different susceptibility dephasing) and each diffusion-gradient direction are undefined relative to the tissue. A pack SHOULD therefore declare `walk_params.substrate_frame` (§10): a **3×3 orthonormal, right-handed matrix `R`** whose columns are a canonical substrate basis expressed in stored coordinates, with **column 3 (`z`) the primary structural axis** (e.g. the fibre-bundle direction) and columns 1–2 a **fixed perpendicular basis**. A single axis is insufficient: it leaves a free rotation about itself, so the perpendicular plane — and hence any non-axisymmetric structure, multi-direction scheme, or b-tensor — would be gauge-dependent from run to run. The producer MUST pin `x`/`y` deterministically, aligning them to genuine in-plane structure where one exists. For a **single, axisymmetric** population, `x`/`y` are a fixed but arbitrary basis (e.g. Gram–Schmidt from a fixed reference). For a **multi-population (e.g. crossing)** substrate the producer MUST anchor the frame to a **primary** population, never to a principal-axis/PCA average over all positions — that average is the bundles' *bisector*, which is no real population's axis and rotates as the crossing angle opens, leaving a crossing-angle series with no shared reference. The RECOMMENDED convention: `z` = the primary population's mean axis (chosen by a deterministic rule declared in provenance — e.g. largest by volume, tie-broken by index, independent of packing RNG); `y` = the secondary population's mean axis projected perpendicular to `z` (so the crossing opens into `+y`); `x = y × z`. The primary population then sits at `z` in every pack of a crossing-angle series and the secondary rotates `z → +y` (one bundle held straight, the other rotating), so replays are directly comparable. Two populations fully pin the frame; further populations are merely described by their axes within it. A direction given in the **canonical frame** (`z` along the primary axis) maps to stored coordinates as `d_stored = R · d_canonical`; a replayer orients an acquisition onto the pack by this rotation. Every pack SHOULD carry `substrate_frame` for uniform behaviour, **including isotropic substrates**, for which `R` MAY be the identity but MUST still be fixed. A pack that omits it MUST be treated as `R = I` (positions already in the canonical frame); producers of oriented substrates are strongly encouraged not to rely on this default.
 
 ### 4.3 Time
 The save grid is uniform with interval `Δt = dt_traj`. `N_t` and `T_max = (N_t − 1)·Δt` are recorded. The integrator's internal sub-step is a producer concern and is neither stored nor standardized.
@@ -419,6 +420,12 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
                                          //   sets grid-map sampling (§4.5) + bounds the envelope
                                          //   (a finite box restricts long-diffusion-time replays);
                                          //   default "periodic" for back-compatibility
+    "substrate_frame": [[1,0,0],[0,1,0],[0,0,1]],  // OPTIONAL 3x3 orthonormal, right-handed frame
+                                         //   R (§4.2): columns = canonical substrate basis in stored
+                                         //   coords; column 3 (z) = primary axis (fibre), columns 1-2
+                                         //   = a FIXED perpendicular basis (no free rotation about the
+                                         //   fibre). A canonical direction maps to stored as R·d.
+                                         //   Omit => identity (positions already canonical).
     "cell_size": 5e-6,                   // m, field-map grid spacing; present iff Field grid maps
     "delta_chi_a": -0.1e-6,              // anisotropic susceptibility scale the Field basis/maps
                                          //   are normalized to; present iff Field tier

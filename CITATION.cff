@@ -2,9 +2,9 @@ cff-version: 1.2.0
 title: "The Replay Pack Specification (.rpk): an open format for replayable Monte-Carlo diffusion-MRI walks"
 message: "If you implement, emit, or consume Replay Packs, please cite this specification."
 type: standard
-version: 0.2.0
+version: 0.2.1
 doi: 10.5281/zenodo.21692505
-date-released: 2026-07-29
+date-released: 2026-07-30
 abstract: >
   A portable, code-free file format and replay model that stores the state of a
   Monte-Carlo random walk through a diffusion-MRI substrate so the measured signal can

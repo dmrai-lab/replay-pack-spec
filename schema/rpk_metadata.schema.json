@@ -28,6 +28,7 @@
         "diffusivity": {"type": ["number", "null"], "description": "Fixed free diffusivity (m^2/s). Not a knob."},
         "seed": {"type": "integer"},
         "boundary": {"type": ["string", "null"], "enum": ["periodic", "reflecting", "finite", null], "description": "Simulation-box boundary (SPEC §4.5): sets Field grid-map sampling (wrapped for periodic, clamped otherwise) and bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."},
+        "substrate_frame": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}, "minItems": 3, "maxItems": 3, "description": "Intrinsic orientation frame R, a 3x3 orthonormal right-handed matrix (SPEC §4.2). Columns are the canonical substrate basis in stored coordinates: column 3 (z) = primary axis (fibre), columns 1-2 = a fixed perpendicular basis (no free rotation about the fibre). A canonical direction maps to stored coordinates as R*d. Omit (or null) => identity: positions are already in the canonical frame. B0/gradient directions are defined relative to this frame."},
         "cell_size": {"type": ["number", "null"], "description": "Field-map grid spacing (m); present iff Field grid maps (susc_field_{0,C,S})."},
         "delta_chi_a": {"type": ["number", "null"], "description": "Anisotropic susceptibility scale the Field basis/maps are normalized to (SPEC §6.4); present iff Field tier. A purely isotropic source uses susc_field_0 / iso terms alone."},
         "field_grid": {
