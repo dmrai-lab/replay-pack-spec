@@ -70,17 +70,21 @@ only what it occupies.
 zero fraction.
 
 **`geometric_fraction` is geometry, not signal.** It is the share of the voxel volume the
-substrate occupies, before any relaxation or proton density is applied. Rows MUST sum to at
-most one, and a replayer MUST NOT normalise a row that sums to less; a row summing to more is
-an error in the phantom and MUST be rejected rather than rescaled.
+substrate occupies, before any relaxation or proton density is applied. Rows MUST sum to
+**one**, and a replayer MUST reject a row that does not, rather than normalising or accepting
+it.
 
-That rule is what makes **partial volume** expressible. A voxel that is 60% white matter and
-30% grey matter returns 90% of the signal the same voxel returns when those two fill it, because
-the remaining 10% is not there. Normalising by the row sum would assert that the cited
-substrates fill every voxel, turning every tissue boundary into pure tissue -- and partial
-volume at boundaries is one of the main things a phantom is built to exercise. A short row is
-therefore a statement, not a defect: it says what is modelled, and leaves what the remainder is
-to the consumer.
+A voxel is always full. There is no vacuum in a sample, so a row summing to less than one is
+not a voxel with a void in it -- it is a voxel whose remainder was not modelled, and composing
+it returns a signal that is quietly too low while looking entirely legitimate. Anything that is
+not tissue is therefore declared as a substrate rather than left as slack: background air is a
+**non-signal-bearing** substrate (`"pack": null`, `m0 = 0`) that occupies volume and emits
+nothing, and free water is an ordinary substrate with its own pack.
+
+Partial volume needs no slack in the sum, because it is carried by the *ratio* of the
+fractions. A voxel that is 60% white matter and 30% grey matter with the remainder air is
+`0.6 / 0.3 / 0.1-air`; one made only of those two tissues is `2/3 / 1/3`. Both sum to one, and
+they are different voxels -- which is exactly what a boundary needs to express.
 
 ## 4. Orientation: peaks or an ODF
 
@@ -177,7 +181,8 @@ JSON under the safetensors header key **`"rph"`**:
     {"id": "canonical/wm/g070-f055", "m0": 0.70, "embedded": true,
      "sha256": "…", "pack_meta": {…}},                // arrays under substrate0/
     {"id": "canonical/gm/…",  "m0": 0.85, "embedded": true,  "sha256": "…", "pack_meta": {…}},
-    {"id": "canonical/csf/…", "m0": 1.00, "embedded": false, "sha256": "…", "uri": "hf://…"}
+    {"id": "canonical/csf/…", "m0": 1.00, "embedded": false, "sha256": "…", "uri": "hf://…"},
+    {"id": "background/air",  "m0": 0.00, "pack": null}   // occupies volume, emits nothing
   ],
   "scalars": ["kappa_B1"],
   "license": "…", "citation": "…", "provenance": {…}
