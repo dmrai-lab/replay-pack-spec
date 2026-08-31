@@ -45,6 +45,14 @@ A producer declares the tiers it populates; a replayer refuses (never fakes) tie
 does not carry. (Tiers are named **C0–C4** — not `T#`, which would collide with the
 relaxation times `T1`/`T2`.)
 
+### Replay phantoms (`.rph`)
+
+A **replay phantom** arranges solved packs in space: per-voxel pack references, volume
+fractions and orientation distributions, and no walkers of its own. One solved pack
+serves every voxel and every orientation that cites it, so a phantom is small and the
+expensive object stays shared. Defined in [`RPH.md`](RPH.md); it is a secondary format
+that adds no capability tier — a phantom's tier is the intersection of its packs'.
+
 ## Status
 
 **v0.2.0 (draft for comment).** The `1.x` container schema (channel names, metadata keys) is
