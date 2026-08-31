@@ -94,6 +94,39 @@ those directions with the same weights, to within the SH truncation. Peaks are s
 separately because evaluating the response at a direction is exact and cheaper than contracting
 a near-singular ODF, not because they mean something different.
 
+### 4.1 The spherical-harmonic basis is normative
+
+Phantoms will be built from ODFs produced elsewhere -- MRtrix, DIPY, dmipy -- and those tools
+do not share a real spherical-harmonic convention. The differences are not cosmetic here: the
+composition of §6 goes through the SH addition theorem, which holds only for an **orthonormal**
+basis, and one widely used convention is not orthonormal. `odf_sh` MUST therefore be stored in
+the basis below, and `orientation.convention` MUST name it.
+
+**The required basis.** Orthonormal real spherical harmonics, even orders only, one contiguous
+block per order with `m` ascending from `-l` to `+l`, `Y_{l,0} = sqrt((2l+1)/4pi) P_l(cos t)`
+and `Y_{l,±m}` the `sqrt(2)`-scaled cosine (`+m`) and sine (`-m`) terms. This is DIPY's
+`real_sh_tournier(..., legacy=False)`.
+
+**Converting from the common alternatives.** Both relations below are exact and per-coefficient;
+neither is a resampling.
+
+| Source | Orthonormal | Coefficient conversion to the required basis |
+|---|---|---|
+| `tournier` (DIPY, `legacy=False`) | yes | identity |
+| `mrtrix` / `tournier_legacy` (DIPY default; MRtrix `.mif` FODs) | **no** | `c ← c/sqrt(2)` for `m ≠ 0`; `m = 0` unchanged |
+| `descoteaux` (DIPY) | yes | `c_{l,m} ← s_m · c_{l,-m}`, with `s_m = (-1)^m` for `m > 0` and `+1` otherwise |
+
+The two failure modes differ in how loudly they fail, which is the reason to be strict. The
+MRtrix basis differs by a **scale** on `m ≠ 0` and breaks the addition theorem, so a phantom
+imported without conversion is wrong by an amount that **vanishes exactly when the gradient is
+parallel to `B0`** -- the one geometry a cursory check would test. The Descoteaux basis is
+orthonormal but is a different basis, related by a signed `m → -m` permutation within each
+band; unconverted it is wrong everywhere, which at least announces itself.
+
+A producer that cannot establish which convention its source used MUST NOT declare one. There
+is no safe default: guessing `tournier` for MRtrix output silently rescales every `m ≠ 0`
+coefficient.
+
 ## 5. Proton density
 
 Every substrate carries its own **`m0`** -- equilibrium proton density, in whatever units the
