@@ -77,26 +77,52 @@ it.
 A voxel is always full. There is no vacuum in a sample, so a row summing to less than one is
 not a voxel with a void in it -- it is a voxel whose remainder was not modelled, and composing
 it returns a signal that is quietly too low while looking entirely legitimate. Anything that is
-not tissue is therefore declared as a substrate rather than left as slack: free water is an
-ordinary substrate with its own pack, and volume that carries no modelled physics is an
-**inert** substrate (`"pack": null`, `m0 = 0`) which occupies space and contributes neither
-signal nor field.
-
-**An inert substrate is not air.** It is defined by contributing nothing, which is a modelling
-statement, not a material. Air is the opposite of inert magnetically: the air--tissue
-susceptibility step is of order 9 ppm, roughly two orders of magnitude larger than the
-sub-ppm anisotropy the packs carry, and it perturbs the field of *neighbouring* voxels over
-centimetres. A phantom composes packs voxel-by-voxel and has no mechanism for that
-inter-voxel field, so a genuine air cavity MUST NOT be represented by an inert substrate --
-doing so would put an air interface in the geometry and silently omit the dominant effect it
-has. Representing air needs a macroscopic `B0` field map over the grid, which is an assembly
-property in the sense of SPEC §14 and is not in this version.
+not tissue is therefore declared as a substrate rather than left as slack. §3.1 gives the
+three kinds a substrate may be.
 
 Partial volume needs no slack in the sum, because it is carried by the *ratio* of the
 fractions. A voxel that is 60% white matter and 30% grey matter with the remainder outside the
 modelled object is `0.6 / 0.3 / 0.1-inert`; one made only of those two tissues is `2/3 / 1/3`.
 Both sum to one, and they are different voxels -- which is exactly what a boundary needs to
 express.
+
+### 3.1 Three kinds of substrate
+
+| `kind` | Response from | Needs a pack | Needs an orientation |
+|---|---|---|---|
+| `pack` | stored walkers (`SPEC.md`) | yes | yes |
+| `analytic` | a declared closed form | no | only if the model is anisotropic |
+| `inert` | nothing | no | no |
+
+**`analytic` exists because for some substrates a pack is not merely wasteful but unusable.**
+Free water is the case. Its signal decays exponentially in `b`, while the Monte-Carlo error of
+a walker ensemble decays only as `1/sqrt(N_w)` and is roughly `b`-independent, so the *relative*
+error grows like `exp(+bD)/sqrt(N_w)`. At `D = 3.0e-9 m^2/s` with 4000 walkers the noise floor
+is 0.1x the signal at `b = 1000 s/mm^2`, **113x** at 3000 and **8.5e4** at 5000; reaching 1%
+relative accuracy would need of order `5e11` walkers at `b = 3000` and `3e17` at 5000. No pack
+can be built. The closed form `exp(-bD)` is exact, has no walkers to store, and -- being
+isotropic -- carries no orientation, so it also needs no ODF.
+
+This version defines one analytic model:
+
+```jsonc
+{"id": "csf/free-water", "kind": "analytic", "m0": 1.00,
+ "model": "free_water", "params": {"diffusivity": 3.0e-9}}
+```
+
+with response `E = exp(-b D)`, independent of gradient direction and of `B0`. A replayer MUST
+refuse an analytic `model` it does not recognise rather than guessing, exactly as SPEC §9
+requires for codecs. Further models are additions to this table, not changes to the format.
+
+**`inert` is not air.** It is defined by contributing nothing, which is a modelling statement,
+not a material. Air is the opposite of inert magnetically: the air--tissue susceptibility step
+is of order 9 ppm, roughly two orders of magnitude larger than the sub-ppm anisotropy the packs
+carry, and it perturbs the field of *neighbouring* voxels over centimetres. A phantom composes
+packs voxel-by-voxel and has no mechanism for that inter-voxel field, so a genuine air cavity
+MUST NOT be represented by an inert substrate -- doing so would put an air interface in the
+geometry and silently omit the dominant effect it has. Representing air needs a macroscopic
+`B0` field map over the grid, which is an assembly property in the sense of SPEC §14 and is not
+in this version.
 
 ## 4. Orientation: peaks or an ODF
 
@@ -169,7 +195,9 @@ S_v(q) = sum_p  geometric_fraction[v,p] * m0[substrate_id[v,p]]
                 * INT_{S^2} F_{v,p}(n) E_{substrate_id[v,p]}(n; q) dn
 ```
 
-with the integral replaced by `E(peak_dir[v,p]; q)` in peaks mode. Where the response depends
+with the integral replaced by `E(peak_dir[v,p]; q)` in peaks mode, and by the closed form
+itself for an `analytic` substrate whose model is isotropic -- there the orientation carries no
+information and MUST be ignored rather than applied. Where the response depends
 on the field direction as well as the gradient -- susceptibility -- the two axes MUST be
 composed jointly; the reduction to independent one-dimensional convolutions does not hold
 there.
@@ -190,11 +218,13 @@ JSON under the safetensors header key **`"rph"`**:
                                                       //      "basis": "real",
                                                       //      "convention": "orthonormal"}
   "substrates": [
-    {"id": "canonical/wm/g070-f055", "m0": 0.70, "embedded": true,
+    {"id": "canonical/wm/g070-f055", "kind": "pack", "m0": 0.70, "embedded": true,
      "sha256": "…", "pack_meta": {…}},                // arrays under substrate0/
-    {"id": "canonical/gm/…",  "m0": 0.85, "embedded": true,  "sha256": "…", "pack_meta": {…}},
-    {"id": "canonical/csf/…", "m0": 1.00, "embedded": false, "sha256": "…", "uri": "hf://…"},
-    {"id": "background/inert", "m0": 0.00, "pack": null}  // occupies volume, no signal, no field
+    {"id": "canonical/gm/…", "kind": "pack", "m0": 0.85, "embedded": true,
+     "sha256": "…", "pack_meta": {…}},
+    {"id": "csf/free-water",   "kind": "analytic", "m0": 1.00,
+     "model": "free_water", "params": {"diffusivity": 3.0e-9}},
+    {"id": "background/inert", "kind": "inert", "m0": 0.00}
   ],
   "scalars": ["kappa_B1"],
   "license": "…", "citation": "…", "provenance": {…}
