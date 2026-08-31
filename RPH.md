@@ -1,105 +1,162 @@
 # The Replay Phantom Specification (`.rph`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.1.0 (draft).
+**Version:** 0.2.0 (draft).
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 A **replay phantom** is a spatial arrangement of solved substrates -- an assembly of replay
 packs ([`SPEC.md`](SPEC.md)) -- together with the per-voxel information needed to compose them
-into a signal. It stores **no walkers and no trajectories**. Everything physical lives in the
-packs it references; the phantom adds only *where they are, how they are oriented, and in what
-proportion*.
+into a signal. It stores **no walkers and no trajectories of its own**. Everything physical
+lives in the packs; the phantom adds only *which substrates are where, how they are oriented,
+in what proportion, and with what proton density*.
 
 This is a **secondary** format. It extends nothing in the replay invariant (SPEC §3) and adds
-no capability tier (SPEC §7). A phantom is exactly as replayable as the packs it cites, and a
-reader that can replay those packs plus the composition of §3 below can replay the phantom.
+no capability tier (SPEC §7). A phantom is exactly as replayable as the packs it carries, and
+its tier is the **intersection** of theirs.
 
 ## 1. Why a phantom is its own format
 
-A pack answers *what does this microstructure do to the magnetization*. It is one substrate at
-one pose. A voxel is a distribution of poses, and a volume is a field of such distributions.
-Those are properties of an arrangement, not of any substrate in it, and SPEC §14 already
-separates them: transmit-field inhomogeneity becomes a per-voxel scalar map once packs are
-tiled into a voxel grid, belonging to the arrangement rather than to any pack in it.
+A pack answers *what does this microstructure do to the magnetization*: one substrate at one
+pose. A voxel is a distribution of poses, a volume is a field of such distributions, and both
+are properties of the arrangement rather than of any substrate in it. SPEC §14 already draws
+that line -- transmit-field inhomogeneity becomes a per-voxel scalar map once packs are tiled,
+belonging to the arrangement and not to any pack.
 
-Keeping the phantom in its own file has three consequences worth the split. The expensive
-object stays shared — one solved pack serves every voxel and every orientation that cites it,
-so a phantom is small and a bank of phantoms costs little beyond the packs. The two evolve
-independently: re-solving a substrate replaces a pack without touching any phantom, and
-re-arranging tissue replaces a phantom without re-solving anything. And provenance stays
-honest, because a phantom names the packs it is made of rather than absorbing and anonymising
-them.
+The split earns itself three times over. The expensive object stays shared: one solved pack
+serves every voxel and every orientation that cites it, so a whole-brain phantom over a handful
+of tissue types is small next to the packs it draws on. Packs and phantoms then evolve
+independently -- re-solving a substrate touches no phantom, re-arranging tissue re-solves
+nothing. And provenance stays honest, because a phantom names what it is made of rather than
+absorbing and anonymising it.
 
-## 2. Data model
+## 2. Referenced and embedded substrates
 
-Arrays, one safetensors file (SPEC §12 conventions apply unchanged):
+A phantom cites each substrate either **by reference** or **embedded**, and MAY mix the two.
+
+*Referenced* keeps the phantom small and is right for a bank, where the packs are already
+published and addressable. *Embedded* makes the phantom a **standalone artifact**: a brain
+phantom with its white-matter, grey-matter and CSF substrates inside it can be shared, cited
+and replayed as one file, with no resolution step and nothing to go missing. That is the mode
+to prefer for anything archival, since a reference is only as durable as what it points at.
+
+Embedded packs are stored **as tensors, not as opaque blobs**: substrate `i`'s arrays appear
+under the prefix `substrate{i}/`, so `substrate0/pos_x` is the `pos_x` channel of the first
+substrate. This keeps the properties SPEC §12 requires safetensors for -- strong typing and
+zero-copy access -- and lets a reader memory-map one channel of one substrate without
+materialising the rest. The prefix also removes any collision between substrates that share
+channel names, which all of them do.
+
+Each embedded pack's own metadata object is carried verbatim under `substrates[i].pack_meta`.
+A reader MUST treat it exactly as it would that pack's `"rpk"` header: the embedding changes
+where the bytes live, never what they mean. `sha256` is REQUIRED in both modes and pins the
+identity of the solved physics either way.
+
+## 3. Data model
+
+One safetensors file; SPEC §12 conventions apply unchanged. The grid is stored **sparsely** --
+only occupied voxels appear -- so an anatomy that fills a fraction of its bounding box costs
+only what it occupies.
 
 | Array | Shape | dtype | Meaning |
 |---|---|---|---|
-| `voxel_index` | `(N_v, D)` | int32 | voxel coordinates on the grid; `D` is 2 or 3 |
-| `pack_id` | `(N_v, P)` | int16 | index into `packs` (§4); `-1` marks an empty slot |
-| `pack_fraction` | `(N_v, P)` | float32 | volume fraction per cited pack; row sums ≤ 1 |
-| `odf_sh` | `(N_v, P, n_c)` | float32 | orientation distribution per (voxel, pack), even-order real SH |
-| `scalars` | `(N_v, S)` | float32 | OPTIONAL per-voxel phantom scalars, named in metadata |
+| `voxel_index` | `(N_v, 3)` | int32 | voxel coordinates on the grid |
+| `substrate_id` | `(N_v, P)` | int16 | index into `substrates` (§5); `-1` marks an unused slot |
+| `geometric_fraction` | `(N_v, P)` | float32 | fraction of the voxel volume occupied by that substrate |
+| `peak_dir` | `(N_v, P, 3)` | float32 | *peaks mode*: unit orientation of each slot |
+| `odf_sh` | `(N_v, P, n_c)` | float32 | *ODF mode*: orientation distribution, even-order real SH |
+| `scalars` | `(N_v, S)` | float32 | OPTIONAL per-voxel scalars, named in metadata |
 
-`P` is the maximum number of packs cited by any voxel. A voxel citing fewer pads with
-`pack_id = -1` and zero fraction. A row summing to less than one leaves the remainder
-unmodelled — a phantom MUST NOT silently normalise it, since "the rest is free water" is a
-modelling choice belonging to the consumer.
+`P` is the number of slots per voxel. A voxel using fewer pads with `substrate_id = -1` and
+zero fraction.
 
-The single-orientation case is the `n_c = 1` degenerate ODF; storing a direction instead of a
-distribution is not a separate mode. That keeps one composition path rather than two.
+**`geometric_fraction` is geometry, not signal.** It is the share of the voxel volume the
+substrate occupies, before any relaxation or proton density is applied. Rows MUST sum to at
+most one; a row summing to less leaves the remainder unmodelled, and a phantom MUST NOT
+silently normalise it, because "the rest is free water" is a modelling choice belonging to the
+consumer, not a repair the format should perform.
 
-## 3. Replay operation
+## 4. Orientation: peaks or an ODF
 
-For voxel `v` and acquisition `q`, with `E_p` the pack response and `F_{v,p}` the orientation
-distribution,
+Exactly one orientation mode is declared per phantom.
+
+**Peaks** (`peak_dir`) give each slot a single direction. This is the representation for
+discrete crossings: a voxel with two fibre populations is two slots with two directions, and
+`P ≤ 3` covers the crossing configurations that are resolvable in practice. The two populations
+may cite the *same* substrate at different orientations -- a pure crossing of one solved
+microstructure -- or different substrates.
+
+**ODF** (`odf_sh`) gives each slot an orientation distribution in the even-order real spherical
+harmonic basis, for dispersion, fanning, and anything a discrete peak set cannot express.
+
+The two are not separate physics. A peak is the zero-dispersion limit of an ODF, and a
+conformant replayer MUST produce the same signal from a peak set as from ODFs concentrated on
+those directions with the same weights, to within the SH truncation. Peaks are stored
+separately because evaluating the response at a direction is exact and cheaper than contracting
+a near-singular ODF, not because they mean something different.
+
+## 5. Proton density
+
+Every substrate carries its own **`m0`** -- equilibrium proton density, in whatever units the
+phantom declares -- in `substrates[i].m0`. This is required, not optional: white matter, grey
+matter and CSF differ in proton density by tens of per cent, and a phantom that omits it
+silently asserts they do not. It is a property of the substrate as used here, so it lives with
+the substrate rather than in a per-voxel array; genuine spatial variation of proton density
+within one tissue belongs in `scalars`.
+
+## 6. Replay operation
+
+For voxel `v` and acquisition `q`, with `E_i` the response of substrate `i` and `F_{v,p}` the
+orientation of slot `p`,
 
 ```
-S_v(q) = sum_p  pack_fraction[v,p] * INT_{S^2}  F_{v,p}(n) E_p(n; q)  dn
+S_v(q) = sum_p  geometric_fraction[v,p] * m0[substrate_id[v,p]]
+                * INT_{S^2} F_{v,p}(n) E_{substrate_id[v,p]}(n; q) dn
 ```
 
-The inner integral is the composition of the coupled angular spectrum: linear in the SH
-coefficients of `F`, so it is a contraction rather than a quadrature per voxel. Where the
-response depends on the field direction as well as the gradient — susceptibility — the two axes
-must be composed jointly, and the reduction to independent one-dimensional convolutions does
-not hold. A conformant replayer MUST compose both axes.
+with the integral replaced by `E(peak_dir[v,p]; q)` in peaks mode. Where the response depends
+on the field direction as well as the gradient -- susceptibility -- the two axes MUST be
+composed jointly; the reduction to independent one-dimensional convolutions does not hold
+there.
 
-Composition is **linear in `F` and in `pack_fraction`**, so a phantom introduces no new physics
-and cannot repair a pack that does not carry the tier an acquisition needs: a phantom's tier is
-the *intersection* of the tiers of the packs it cites.
+Composition is linear in the orientation, in `geometric_fraction` and in `m0`, so a phantom
+introduces no new physics and cannot supply a tier its packs lack.
 
-## 4. Metadata
+## 7. Metadata
 
-JSON under the safetensors header key **`"rph"`** (SPEC §12 conventions):
+JSON under the safetensors header key **`"rph"`**:
 
 ```jsonc
 {
-  "rph_schema_version": "0.1.0",
-  "id": "phantoms/circular-wm/annulus-30",
-  "packs": [                          // resolved by id, NOT embedded
-    {"id": "winther/g6/axon06", "sha256": "…", "uri": "hf://…"}
+  "rph_schema_version": "0.2.0",
+  "id": "phantoms/brain/hcp-like-1mm",
+  "grid": {"shape": [180, 216, 180], "voxel_size_m": [1e-3, 1e-3, 1e-3], "frame": "RAS"},
+  "orientation": {"mode": "peaks", "max_peaks": 3},   // or {"mode": "odf_sh", "lmax": 8,
+                                                      //      "basis": "real",
+                                                      //      "convention": "orthonormal"}
+  "substrates": [
+    {"id": "canonical/wm/g070-f055", "m0": 0.70, "embedded": true,
+     "sha256": "…", "pack_meta": {…}},                // arrays under substrate0/
+    {"id": "canonical/gm/…",  "m0": 0.85, "embedded": true,  "sha256": "…", "pack_meta": {…}},
+    {"id": "canonical/csf/…", "m0": 1.00, "embedded": false, "sha256": "…", "uri": "hf://…"}
   ],
-  "grid": {"shape": [30, 30], "voxel_size_m": [1e-3, 1e-3], "frame": "…"},
-  "sh": {"basis": "real", "convention": "orthonormal", "lmax": 8},
-  "scalars": ["kappa_B1"],            // names for the columns of `scalars`
+  "scalars": ["kappa_B1"],
   "license": "…", "citation": "…", "provenance": {…}
 }
 ```
 
-Two fields carry weight. `packs[].sha256` pins *which* solved physics a result used, so a
-phantom is reproducible even as a bank re-issues packs. And `sh.convention` MUST be stated and
-MUST be `orthonormal`: the composition goes through the spherical-harmonic addition theorem,
-which is false for the non-orthonormal real conventions in common use, and the error it causes
-vanishes exactly when the gradient is parallel to `B0` — the one geometry a cursory check
-would test.
+In ODF mode `orientation.convention` MUST be `orthonormal`. The composition goes through the
+spherical-harmonic addition theorem, which is false for the non-orthonormal real conventions in
+common use, and the error it introduces vanishes exactly when the gradient is parallel to `B0`
+-- the one geometry a cursory check would test.
 
-## 5. Conformance
+## 8. Conformance
 
-A file is a conformant `.rph` when it is a safetensors container carrying the arrays of §2 and
-the metadata of §4; every `pack_id` resolves to a cited pack; `pack_fraction` rows sum to at
-most one; and `odf_sh` is in the declared orthonormal basis.
+A file is a conformant `.rph` when it is a safetensors container carrying the arrays of §3 and
+the metadata of §7; every `substrate_id` resolves; `geometric_fraction` rows sum to at most
+one; every substrate declares `m0` and `sha256`; embedded substrates carry their arrays under
+`substrate{i}/` and their `pack_meta`; and, in ODF mode, `odf_sh` is in the declared orthonormal
+basis.
 
-A conformant replayer resolves the cited packs, refuses (never guesses) an unresolvable one,
-composes per §3 over both axes where susceptibility is present, and reports the phantom's tier
-as the intersection of its packs' tiers.
+A conformant replayer resolves or reads every cited substrate, refuses (never guesses) one it
+cannot, composes per §6 over both axes where susceptibility is present, and reports the
+phantom's tier as the intersection of its substrates' tiers.
