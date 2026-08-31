@@ -77,14 +77,26 @@ it.
 A voxel is always full. There is no vacuum in a sample, so a row summing to less than one is
 not a voxel with a void in it -- it is a voxel whose remainder was not modelled, and composing
 it returns a signal that is quietly too low while looking entirely legitimate. Anything that is
-not tissue is therefore declared as a substrate rather than left as slack: background air is a
-**non-signal-bearing** substrate (`"pack": null`, `m0 = 0`) that occupies volume and emits
-nothing, and free water is an ordinary substrate with its own pack.
+not tissue is therefore declared as a substrate rather than left as slack: free water is an
+ordinary substrate with its own pack, and volume that carries no modelled physics is an
+**inert** substrate (`"pack": null`, `m0 = 0`) which occupies space and contributes neither
+signal nor field.
+
+**An inert substrate is not air.** It is defined by contributing nothing, which is a modelling
+statement, not a material. Air is the opposite of inert magnetically: the air--tissue
+susceptibility step is of order 9 ppm, roughly two orders of magnitude larger than the
+sub-ppm anisotropy the packs carry, and it perturbs the field of *neighbouring* voxels over
+centimetres. A phantom composes packs voxel-by-voxel and has no mechanism for that
+inter-voxel field, so a genuine air cavity MUST NOT be represented by an inert substrate --
+doing so would put an air interface in the geometry and silently omit the dominant effect it
+has. Representing air needs a macroscopic `B0` field map over the grid, which is an assembly
+property in the sense of SPEC §14 and is not in this version.
 
 Partial volume needs no slack in the sum, because it is carried by the *ratio* of the
-fractions. A voxel that is 60% white matter and 30% grey matter with the remainder air is
-`0.6 / 0.3 / 0.1-air`; one made only of those two tissues is `2/3 / 1/3`. Both sum to one, and
-they are different voxels -- which is exactly what a boundary needs to express.
+fractions. A voxel that is 60% white matter and 30% grey matter with the remainder outside the
+modelled object is `0.6 / 0.3 / 0.1-inert`; one made only of those two tissues is `2/3 / 1/3`.
+Both sum to one, and they are different voxels -- which is exactly what a boundary needs to
+express.
 
 ## 4. Orientation: peaks or an ODF
 
@@ -182,7 +194,7 @@ JSON under the safetensors header key **`"rph"`**:
      "sha256": "…", "pack_meta": {…}},                // arrays under substrate0/
     {"id": "canonical/gm/…",  "m0": 0.85, "embedded": true,  "sha256": "…", "pack_meta": {…}},
     {"id": "canonical/csf/…", "m0": 1.00, "embedded": false, "sha256": "…", "uri": "hf://…"},
-    {"id": "background/air",  "m0": 0.00, "pack": null}   // occupies volume, emits nothing
+    {"id": "background/inert", "m0": 0.00, "pack": null}  // occupies volume, no signal, no field
   ],
   "scalars": ["kappa_B1"],
   "license": "…", "citation": "…", "provenance": {…}
