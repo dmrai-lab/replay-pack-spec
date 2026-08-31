@@ -71,9 +71,16 @@ zero fraction.
 
 **`geometric_fraction` is geometry, not signal.** It is the share of the voxel volume the
 substrate occupies, before any relaxation or proton density is applied. Rows MUST sum to at
-most one; a row summing to less leaves the remainder unmodelled, and a phantom MUST NOT
-silently normalise it, because "the rest is free water" is a modelling choice belonging to the
-consumer, not a repair the format should perform.
+most one, and a replayer MUST NOT normalise a row that sums to less; a row summing to more is
+an error in the phantom and MUST be rejected rather than rescaled.
+
+That rule is what makes **partial volume** expressible. A voxel that is 60% white matter and
+30% grey matter returns 90% of the signal the same voxel returns when those two fill it, because
+the remaining 10% is not there. Normalising by the row sum would assert that the cited
+substrates fill every voxel, turning every tissue boundary into pure tissue -- and partial
+volume at boundaries is one of the main things a phantom is built to exercise. A short row is
+therefore a statement, not a defect: it says what is modelled, and leaves what the remainder is
+to the consumer.
 
 ## 4. Orientation: peaks or an ODF
 
