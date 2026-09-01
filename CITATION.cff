@@ -1,8 +1,8 @@
 cff-version: 1.2.0
-title: "The Replay Pack Specification (.rpk): an open format for replayable Monte-Carlo diffusion-MRI walks"
-message: "If you implement, emit, or consume Replay Packs, please cite this specification."
+title: "The Replay Pack (.rpk) and Replay Phantom (.rph) Specifications: open formats for replayable Monte-Carlo diffusion-MRI"
+message: "If you implement, emit, or consume Replay Packs or Replay Phantoms, please cite this specification."
 type: standard
-version: 0.2.2
+version: 0.3.0
 doi: 10.5281/zenodo.21692505
 date-released: 2026-07-31
 abstract: >
@@ -12,7 +12,12 @@ abstract: >
   orientations, relaxation times, surface relaxivity, and magnetization-transfer
   settings without re-running the walk. The format is independent of any compression
   scheme and supports partial ("tiered") producers, enabling interoperability across
-  simulators and a shared substrate bank.
+  simulators and a shared substrate bank. A companion format, the Replay Phantom
+  (.rph), composes solved packs into a voxel grid — per-voxel substrate fractions,
+  proton densities, and orientation distributions in a normatively specified
+  spherical-harmonic basis — holding references rather than walkers, so one solved
+  substrate serves every voxel that cites it. A phantom adds no capability of its
+  own: its replayable tier is the intersection of its packs'.
 authors:
   - family-names: Fick
     given-names: Rutger H. J.
@@ -23,5 +28,6 @@ keywords:
   - microstructure
   - data format
   - replay
+  - digital phantom
 license: CC-BY-4.0
 license-url: "https://creativecommons.org/licenses/by/4.0/legalcode"
