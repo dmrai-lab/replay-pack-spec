@@ -5,6 +5,13 @@ one for arranging solved substrates in space.**
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21692505.svg)](https://doi.org/10.5281/zenodo.21692505)
 
+![Solve once into a Replay Pack, compose packs into a Replay Phantom, replay the phantom for any acquisition within its declared envelope](docs/figures/replay-overview.png)
+
+*Solve the microphysics once per substrate and persist it (`.rpk`); arrange solved packs
+into a voxel grid with per-voxel fractions and orientations (`.rph`); then interrogate that
+phantom with any acquisition **its declared envelope covers** — no new Monte Carlo. The
+expensive step happens once; everything to its right is contraction and composition.*
+
 A **Replay Pack** is a portable, code-free file that stores the *state of a Monte-Carlo
 random walk* through a diffusion-MRI substrate so that the measured signal can be
 **replayed** for many different acquisitions and physical settings — any gradient
