@@ -1,8 +1,8 @@
 # The Replay Pack Specification (`.rpk`)
 
-**Version:** 0.2.2 (draft for comment)
-**Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified. `0.2.2` is clarification-only (no new required fields): it states **time-additivity / resume** — a walk MAY be extended in time by resuming from its final state, the forward complement of the TE-prefix property (§3) — and RECOMMENDS **archiving the geometry of non-reproducible generated substrates** so that resume and walker-shards remain possible (§8.9). `0.2.1` added the OPTIONAL orientation frame `walk_params.substrate_frame` (§4.2, §10). `0.2.0` added two OPTIONAL *representations* (a per-walker Field basis, §6.4.1; a parametric two-pool MT model, §6.5.1) and stated the additive-shard property (§3). All `0.1.x`/`0.2.x` packs remain conformant.
-**Container schema described:** `rpk_schema_version = "1.2"`
+**Version:** 0.2.3 (draft for comment)
+**Status:** Draft — stable enough to implement against; field names and metadata keys are frozen for the `1.x` container schema, semantics may be clarified. `0.2.3` separates **what a channel contains** from **how it is stored** where the two had blurred: it pins the previously-unstated component order and degrees of freedom of `susc_field_basis` (§5.3), adds interface rule 5 — a codec that narrows *reach* rather than accuracy declares it in `replay_envelope`, not `fidelity` (§9.4, §6.4.1) — and with it two OPTIONAL envelope keys, `acquisition.max_refocusing_pulses` and `acquisition.field_modes`. No new required fields. `0.2.2` is clarification-only (no new required fields): it states **time-additivity / resume** — a walk MAY be extended in time by resuming from its final state, the forward complement of the TE-prefix property (§3) — and RECOMMENDS **archiving the geometry of non-reproducible generated substrates** so that resume and walker-shards remain possible (§8.9). `0.2.1` added the OPTIONAL orientation frame `walk_params.substrate_frame` (§4.2, §10). `0.2.0` added two OPTIONAL *representations* (a per-walker Field basis, §6.4.1; a parametric two-pool MT model, §6.5.1) and stated the additive-shard property (§3). All `0.1.x`/`0.2.x` packs remain conformant.
+**Container schema described:** `rpk_schema_version = "1.3"`
 **License of this document:** CC-BY-4.0. **License of the reference code:** Apache-2.0.
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHOULD**, **SHOULD NOT**, **MAY**, and **OPTIONAL** in this document are to be interpreted as described in RFC 2119.
@@ -62,7 +62,7 @@ Replay rests on one physical fact.
 
 All of those quantities enter the *signal* only through a phase or a (log-)weight accumulated **along** an already-determined trajectory. Therefore they are **replay knobs**: the trajectory is computed once and stored; the signal for any knob setting is a cheap functional of the stored channels (§6).
 
-*Magnetization transfer is split.* The MT **binding kinetics** (binding rate and dwell time) are **not** knobs: a bound spin is frozen for its dwell, so they change the trajectory itself and are fixed at walk time — recorded through the `bound_fraction` schedule (§5.2), exactly as membrane permeability (§7) is a walk-time property. Only the **bound-pool relaxation/off-resonance** (`T2_b`, `T1_b`, `Δω_b`) are replay knobs (§6.5). A pack MAY instead carry MT in a coarser but cheaper **parametric two-pool** representation (§6.5.1) whose pool size and exchange rate are derived from the substrate's surface-to-volume ratio — no per-walker binding channel, and no binding walk — with the RF saturation as the replay knob; the two representations are the emergent and mean-field forms of the same C4 tier.
+*Magnetization transfer is split.* The MT **binding kinetics** (binding rate and dwell time) are **not** knobs: a bound spin is frozen for its dwell, so they change the trajectory itself and are fixed at walk time — recorded through the C1 `bound` occupancy column (§5.2), exactly as membrane permeability (§7) is a walk-time property. Only the **bound-pool relaxation/off-resonance** (`T2_b`, `T1_b`, `Δω_b`) are replay knobs (§6.5). A pack MAY instead carry MT in a coarser but cheaper **parametric two-pool** representation (§6.5.1) whose pool size and exchange rate are derived from the substrate's surface-to-volume ratio — no per-walker binding channel, and no binding walk — with the RF saturation as the replay knob; the two representations are the emergent and mean-field forms of the same C4 tier.
 
 Three consequences are used throughout:
 
@@ -78,7 +78,7 @@ The invariant defines the boundary of the format. The following are **fixed at w
 - the **diffusivity** `D`;†
 - the **random seed**;
 - **membrane permeability / crossing** — a crossing is a per-event random draw that alters the trajectory (§7);
-- the **MT binding kinetics** (rate, dwell) — recorded in `bound_fraction` (§6.5);
+- the **MT binding kinetics** (rate, dwell) — recorded in the C1 `bound` column (§6.5);
 - the **save step** `Δt` — the temporal resolution of the stored walk (resolution limit, above).
 
 † `D` sets the trajectory, so it is recorded as a fixed pack property (§10). The sole exception is the trivial Brownian rescaling — a walk at `D` over `t` equals one at `D/α` over `αt` — which holds **only** in free diffusion, or when the geometry length-scales *and* the save grid `Δt` are co-scaled by the same `α`. In restricted geometry the fixed wall scales break it, so `D` is **not** a general replay knob.
@@ -100,7 +100,7 @@ Two kinds of quantity carry units in this standard, both fixed to SI so that a p
 | diffusivity | `D` | m²·s⁻¹ | `walk_params.diffusivity` (fixed pack property, not a knob) |
 | boundary local time | `ℓ` | metre (m) | `boundary_local_time`, at `ρ/D = 1` (§6.3) |
 | relaxation times | `T1`, `T2` | second (s) | `per_comp` |
-| bound fraction, spin weight | `b_i`, `w_i` | dimensionless | `bound_fraction`, `spin_weights` |
+| bound occupancy, spin weight | `b_i`, `w_i` | dimensionless | `compartment` (`bound` column), `spin_weights` |
 | field-map grid spacing | — | metre (m) | `walk_params.cell_size` |
 
 A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
@@ -152,13 +152,12 @@ A pack is a set of named arrays (**channels**) plus a metadata object (§10). Ar
 | Channel | Shape | Dtype | Units | Definition | Unlocks |
 |---|---|---|---|---|---|
 | `spin_weights` | `(N_w,)` | float32 | — | Per-walker statistical weight `w_i` (e.g. compartment volume weighting). Default `1`. | all tiers |
-| `compartment` | `(N_w, N_t)` | int16 | label | Compartment id of walker `i` at save `k`. Id **0 is the extra-cellular / free compartment by convention**; positive ids are producer-defined and described in metadata `per_comp`. | Relaxation |
+| `compartment` | `(N_w, N_t)` per column | int16 / float32 | label or ∈ [0,1] | **Occupancy over the declared pools**, as one or more named columns. The `comp` column is the exclusive geometric axis: a compartment id of walker `i` at save `k`, id **0 the extra-cellular / free compartment by convention**, positive ids producer-defined and described in `per_comp` (or a fraction where a permeable crossing splits a save). Further columns are occupancies on **independent** axes — `bound` for the MT macromolecular pool (§6.5). | Relaxation (`comp`); Magnetization transfer (`bound`) |
 | `boundary_local_time` | `(N_w, N_t)` | float32 | m (see below) | Per-step accumulated wall-contact measure with **`ρ/D = 1`** (dimension of length ÷ diffusivity is folded so that replay multiplies by the desired `ρ/D`). See §6.3. | Surface |
-| `bound_fraction` | `(N_w, N_t)` | float32 | — ∈ [0,1] | Fraction of walker `i` bound to the restricted (macromolecular) pool at save `k`. | Magnetization transfer |
 | `susc_field_0` | producer grid | float32 | per unit susceptibility | m=0 (isotropic / mean) component of the substrate's normalized off-resonance field map. | Field |
 | `susc_field_C` | producer grid | float32 | " | ℓ=2 cosine (anisotropic) component. | Field |
 | `susc_field_S` | producer grid | float32 | " | ℓ=2 sine (anisotropic) component. | Field |
-| `susc_field_basis` | `(N_w, N_t, 13)` | float32 | per unit susceptibility | Per-walker off-resonance field basis **sampled along the walk** — the *general* Field representation (§6.4.1). The 13 components are `iso_local` (1), `iso_P` (6), and `aniso_G` (6): the isotropic-source and rank-2 anisotropic-source responses, projected onto the 6-vector `Q(H)` of the main-field direction at replay. Per-walker ⇒ needs a walker-preserving codec (§9.4). | Field |
+| `susc_field_basis` | `(N_w, N_t, 13)` | float32 | per unit susceptibility | Per-walker off-resonance field basis **sampled along the walk** — the *general* Field representation (§6.4.1). The 13 components are `iso_local` (1), `iso_P` (6), and `aniso_G` (6): the isotropic-source and rank-2 anisotropic-source responses, projected onto the 6-vector `Q(H)` of the main-field direction at replay. The component axis is **last**, matching `positions`, and its order is fixed by §5.3; the 13 components carry 12 degrees of freedom (§5.3). Per-walker ⇒ needs a walker-preserving codec (§9.4). | Field |
 
 The Field tier has **two representations of the same off-resonance physics** (§6.4), a producer choosing one:
 - **Shared grid maps** `susc_field_{0,C,S}` — **normalized off-resonance basis maps** on a grid, sampled at replay (§6.4). `susc_field_0` carries the isotropic part and `susc_field_{C,S}` the axially-anisotropic (ℓ=2) part. Compact and reusable, but assumes a field **translationally invariant along the fibre axis** (the straight-cylinder idealization); best for periodic/analytic substrates. Accompanied by `walk_params.cell_size` (grid spacing, m), the normalization scale(s) (reference: `walk_params.delta_chi_a`), and, where oriented, `per_comp.R`.
@@ -171,9 +170,12 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 ### 5.3 Channel invariants
 
 - Every per-walker/per-save channel MUST share `N_w` and `N_t` with `positions`.
-- `compartment` id `0` MUST denote the extra-cellular/free pool; other ids MUST be described in `per_comp`.
-- `bound_fraction` MUST lie in `[0, 1]`, and at `k = 0` it MUST be the equilibrium occupancy (the walk is pre-burned-in; §8.8).
+- `compartment` MUST carry the exclusive `comp` column; its id `0` MUST denote the extra-cellular/free pool and other ids MUST be described in `per_comp`. Every column MUST share `N_t`.
+- At each save the occupancy over all declared pools sums to 1. Columns are the **compact encoding of that joint simplex**, not independent quantities: with a bound occupancy `b` and geometric label `g`, the pool occupancies are `f_bound = b` and `f_g = (1 − b)·[comp = g]`. Replay weights the per-pool rates by them, `R(t) = Σ_c f_c(t) R_c` — which is what makes an integer label (one-hot), a permeable crossing (a fraction on the geometric axis), and MT binding (a fraction on an independent axis) the same object.
+- The `bound` column MUST lie in `[0, 1]`, and at `k = 0` it MUST be the equilibrium occupancy (the walk is pre-burned-in; §8.8).
 - `boundary_local_time` MUST be non-negative and expressed in the `ρ/D = 1` normalization of §6.3.
+- `susc_field_basis` MUST order its component axis (the **last** axis) as `iso_local`, then `iso_P` as `(xx, yy, zz, xy, xz, yz)`, then `aniso_G` in the same six-component order — so that slices `[..., 1:7]` and `[..., 7:13]` contract directly against `Q(H)` as written in §6.4.1. A substrate with no anisotropic source stores an all-zero `aniso_G` block.
+- `susc_field_basis` carries **13 components but 12 degrees of freedom**: the isotropic block obeys the exact trace identity `iso_P_xx + iso_P_yy + iso_P_zz = 3 · iso_local`, so `iso_P_zz` is recoverable from the other three. This holds to machine precision when the isotropic source grid the basis was built from is un-apodised, and is **broken** by a k-space window applied to `iso_P` but not to `iso_local`. A producer MUST verify the identity rather than assume it; a codec MAY exploit it (dropping and reconstructing `iso_P_zz`) only where it verifies.
 
 ---
 
@@ -258,15 +260,19 @@ and the off-resonance seen by walker `i` is
 
 which feeds the **same** transverse-phase gate and phase accumulation as §6.4 (`φ^χ_i = Σ_k s(t_k)·Δω_i(t_k)·Δt`), preserving the cross-term identically. This is the *general* form: the grid-map operation (§6.4) is its special case for a field invariant along a fixed fibre axis, and `Q(H)` supersedes the `sin²θ·(cos2α,sin2α)` factor with the full main-field direction — so **any** B0 orientation is a replay knob, not only the polar sweep. Because the basis is pre-sampled, this representation decodes and contracts without a field grid at replay; the trade is per-walker storage versus the grid's shared footprint.
 
+**A truncated temporal storage of this channel costs reach, not accuracy.** The phase reaches the field only through the gate, `φ^χ_i = Σ_k s(t_k)·Δω_i(t_k)·Δt`. A codec that stores the channel as `K` temporal modes (registry) is therefore band-limited **in the gate**, not in the field: the retained modes reproduce `φ^χ` for any `s(t)` inside their band while reproducing `Δω_i(t_k)` itself poorly, because the field along a trajectory is broadband — the walker crosses μm-scale field structure every save step. `K` is thus a **capability**: it bounds the refocusing-pulse density the pack can serve (reference implementation: `K ≥ 2·n_refocus`), and MUST be declared in `replay_envelope` (§9.4 rule 5, §11), never read as "the field is accurate to `K` modes".
+
 ### 6.5 Magnetization transfer (Magnetization-transfer tier)
 
-With `bound_fraction` `b_i(t_k)`, replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a **vector-Bloch replay** — RF pulses act as rotations of the magnetization vector, which the scalar log-weight model cannot represent (it has no `M_z` reservoir). Saturation transfer is *emergent*. The bound-pool parameters are replay knobs. This same vector-Bloch path is the general route for *arbitrary RF* (§6.6). See the reference implementation for the Bloch–McConnell blend.
+With the C1 `bound` occupancy column `b_i(t_k)` (§5.2), replay blends per-step relaxation and off-resonance toward a bound-pool set `(T2_b, T1_b, Δω_b)` by occupancy, within a **vector-Bloch replay** — RF pulses act as rotations of the magnetization vector, which the scalar log-weight model cannot represent (it has no `M_z` reservoir). Saturation transfer is *emergent*. The bound-pool parameters are replay knobs. This same vector-Bloch path is the general route for *arbitrary RF* (§6.6). See the reference implementation for the Bloch–McConnell blend.
+
+**MT stores nothing of its own.** The bound pool is a column of the C1 occupancy channel, because binding *is* an occupancy: a spin bound for a fraction of a save has that fraction of the step at the bound pool's relaxation, which is exactly the occupancy weighting C1 already defines. What makes magnetization transfer a distinct **capability** tier is the replay side — RF as vector-Bloch rotations (the scalar log-weight path cannot express it), the bound-pool knobs, the equilibrium start below, and the certification duty of §9.2 — not the storage. Two tiers sharing a storage form is normal here: C0 and C2 share a byte-identical bridge layout (§9.3) and remain separate tiers because their knobs differ. A useful consequence of storing binding as C1 rather than as a summary parameter: the run lengths of the `bound` column **are** the dwell times, so an emergent pack carries the realised exchange statistics, not just a mean rate.
 
 **Equilibrium start.** A magnetization-transfer pack's `t=0` is the **bound-pool equilibrium**: the walk is generated pre-burned-in (§8.8), so replay begins from a fully-relaxed steady-state occupancy and never sees the fill-up transient. *(This applies to the emergent per-walker representation; the parametric representation of §6.5.1 carries no `t=0` occupancy transient.)*
 
 #### 6.5.1 Parametric two-pool MT (mean-field representation)
 
-The emergent representation above requires the `bound_fraction` schedule, which a producer obtains from a binding walk that resolves near-wall motion at a fine sub-step. On sub-micron restricting features that sub-step makes the binding walk intractable. A producer MAY therefore declare C4 in a **mean-field two-pool** form instead: rather than a per-walker channel, it stores a small **pool descriptor** in metadata `mt` (§10) — the bound-pool fraction `f_b`, the forward exchange rate `k_f`, and the bound-pool relaxation `(T2_b, T1_b)` — derived from the substrate's myelin **surface-to-volume ratio** `S/V` (with the binding reactivity `κ` and dwell `τ`): `k_f = κ·S/V`, `f_b = k_f·τ / (1 + k_f·τ)`. These are **fixed-at-walk-time geometry/tissue properties** (like `D`), not knobs.
+The emergent representation above requires the `bound` occupancy column, which a producer obtains from a binding walk that resolves near-wall motion at a fine sub-step. On sub-micron restricting features that sub-step makes the binding walk intractable. A producer MAY therefore declare C4 in a **mean-field two-pool** form instead: rather than a per-walker channel, it stores a small **pool descriptor** in metadata `mt` (§10) — the bound-pool fraction `f_b`, the forward exchange rate `k_f`, and the bound-pool relaxation `(T2_b, T1_b)` — derived from the substrate's myelin **surface-to-volume ratio** `S/V` (with the binding reactivity `κ` and dwell `τ`): `k_f = κ·S/V`, `f_b = k_f·τ / (1 + k_f·τ)`. These are **fixed-at-walk-time geometry/tissue properties** (like `D`), not knobs.
 
 At replay the observable free-pool signal follows the two-pool **Bloch–McConnell** equations under an RF saturation of nutation `w1` and offset `Δ` for duration `t_sat`; a replayer offering this representation MUST expose at least the **Z-spectrum** (free-pool `M_z` vs `Δ`) and the derived **MT ratio**. RF offset, power, and duration are the replay knobs. This form is validated to reproduce the emergent equilibrium `f_b` (the mean matches `κ·S/V·τ`), but it deliberately does **not** model the binding↔diffusion coupling the emergent walk captures — a bound spin's frozen path — so it is the correct choice for MT saturation / qMT observables and **not** for diffusion–MT coupling. The two are the mean-field and emergent forms of the **same C4 tier**; a pack declares exactly one.
 
@@ -319,7 +325,7 @@ Tiers are named **`C0`–`C4`** (for *capability*) — deliberately not `T#`, wh
 | **C1 Bulk relaxation** | `compartment` (+ `per_comp.T2`,`per_comp.T1`) | §6.2 — any `T2`/`T1` | `bulk_relaxation: true` |
 | **C2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
 | **C3 Field** | `susc_field_{C,S,0}` grid maps (+ `cell_size`) **or** `susc_field_basis` (+ scale) | §6.4 / §6.4.1 — any `B0`, susceptibility, orientation | `field: true` |
-| **C4 Magnetization transfer** | `bound_fraction` (emergent) **or** parametric `mt{}` pool (§6.5.1) | §6.5 / §6.5.1 — magnetization transfer | `magnetization_transfer: true` |
+| **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric `mt{}` pool (§6.5.1) | §6.5 / §6.5.1 — magnetization transfer | `magnetization_transfer: true` |
 
 The declared tier set lives in `replay_envelope` (§10). A replayer asked for a knob outside the declared tiers MUST refuse with a clear "capability not present" error, **not** silently return an approximate result (§11, §13).
 
@@ -341,7 +347,7 @@ MUST store **unwrapped** lab-frame positions. If the walk used a periodic cell, 
 MUST ensure the save grid is uniform and that any leading prefix is itself a converged walk to that shorter time (§3). Producers MUST NOT reorder or subsample walkers across the save axis.
 
 ### 8.4 No sequence assumption
-A producer MUST NOT bake any pulse-sequence choice into the pack. The acquisition (gradients and RF) is applied at replay (§6.6); the producer's obligation is only to store the trajectory (and any tier channels) over the full walk to `T_max`. In particular there is no "refocusing time" a producer must record — refocusing is a property of the replayed sequence, not of the walk.
+A producer MUST NOT bake any pulse-sequence choice into the pack. The acquisition (gradients and RF) is applied at replay (§6.6); the producer's obligation is only to store the trajectory (and any tier channels) over the full walk to `T_max`. In particular there is no "refocusing time" a producer must record — refocusing is a property of the replayed sequence, not of the walk. (A producer that chooses a capability-narrowing codec does declare a refocusing-pulse *density* it can serve — `replay_envelope.acquisition.max_refocusing_pulses`, §9.4 rule 5. That is a limit of the chosen **storage**, not a sequence assumption baked into the walk: the raw channel carries none.)
 
 ### 8.5 Compartment convention
 MUST use id `0` for the extra-cellular/free pool and MUST list every other id with its `(T2, T1[, R])` in `per_comp`.
@@ -353,7 +359,7 @@ MUST honor §4 exactly. A producer using non-SI internal units MUST convert on w
 MUST declare a `replay_envelope` it can defend, and, for any lossy codec, MUST attach a `fidelity` self-report whose battery exercises **every declared tier** (§9.4, §11). A producer MUST NOT declare a tier whose channel it did not actually populate.
 
 ### 8.8 Equilibrium start for magnetization-transfer packs
-A magnetization-transfer-tier (C4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound_fraction` channel accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the magnetization-transfer tier; the other tiers have no such initial-condition transient.
+A magnetization-transfer-tier (C4) pack MUST begin from the **bound-pool equilibrium**. A Monte-Carlo binding walk started from an arbitrary state (e.g. all spins free) shows a transient while the bound fraction relaxes to its steady state `f_b = k_f/(k_f + k_r)`; that transient does not represent a fully-relaxed sample and must not appear in a replay. The producer MUST therefore **equilibrate** the binding dynamics and **discard** that preamble, saving the walk from `t=0 =` the equilibrated state (the `bound` column accordingly starts at equilibrium). Replayers assume `t=0` is equilibrium (§6.5). The producer SHOULD verify the occupancy has reached steady state before saving. This applies only to the magnetization-transfer tier; the other tiers have no such initial-condition transient.
 
 ### 8.9 Reproducibility of generated substrates
 A substrate from a **stochastic generator that is not deterministically reproducible from its configuration** (e.g. a mesher seeded from wall-clock time or process id) cannot be recovered from the config alone. For such substrates the producer SHOULD **archive the exact geometry used for the walk** — as a hashed sidecar — and reference it in `provenance.substrate.ref` (§10). This is needed not only so the substrate is reproducible and inspectable, but because the additive operations of §3 — **resuming/extending the walk in time** and **adding walker shards** — both *re-walk the same geometry*; without an archived geometry they become impossible once the generator's working directory is gone. The geometry *format* is out of scope for the container (§1), but for interoperability the archive SHOULD use an **open, widely-readable geometry format** (e.g. PLY/OBJ/STL for meshes; NIfTI for label volumes) rather than a producer-specific binary, so any consumer — in any language — can read it. Compression is orthogonal: a plain `xz`/`gzip`/`zstd` wrapper keeps it a one-line decompress; a container SHOULD state which. A substrate that *is* bit-reproducible from its config (config + version + seed) MAY instead reference that recipe.
@@ -386,24 +392,25 @@ So raw is exact to the grid, a full basis matches raw, and a truncated basis tra
 
 ### 9.3 Storage codecs
 
-The non-position channels (`compartment`, `boundary_local_time`, `bound_fraction`, …) use per-channel **storage codecs** — run-length, quantization, sparse/dense — matched to each channel's structure. These are pure storage: they decode to the §5 array and do not change replay cost.
+The non-position channels (`compartment`, `boundary_local_time`, …) use per-channel **storage codecs** — run-length, quantization, sparse/dense — matched to each channel's structure. These are pure storage: they decode to the §5 array and do not change replay cost.
 
 ### 9.4 Interface rules
 
-A conformant representation or codec MUST satisfy four rules:
+A conformant representation or codec MUST satisfy five rules:
 
 1. **Declared.** The codec is named (with any parameters) in metadata `compression`, e.g. `{"method": "identity"}` or `{"method": "lowrank", "K": 64, "walker_preserving": true}`. A replayer that does not recognize the `method` MUST refuse (never guess). Recognized method names and their stored tensor keys are defined in the registry.
 2. **Decodes to the contract.** Decoding MUST yield the exact channel array of §5 (dtype/shape/units). Channel *presence* for tiers (§7) and conformance (§13) is satisfied by the channel's raw key **or** the registry-defined stored keys of its codec.
 3. **Identity is the baseline.** `identity` (the raw array under its channel name) is always valid and lossless, and every replayer MUST support it.
 4. **Lossy ⇒ self-certified.** A pack using any lossy codec MUST include a `fidelity` object reporting the maximum decoded-vs-raw replay error over a declared **acquisition battery**, measured against the **split-half Monte-Carlo noise floor** (the ensemble split into two *random* halves — random because walkers are typically seeded in compartment order). The convention: "lossless to the noise floor" means `err_max ≤ tol · floor_max` (reference `tol = 2`). Lossless codecs SHOULD report `err_max = 0`. The battery MUST exercise **every tier the pack declares** — in particular the *nonlinear* Field (C3) and magnetization-transfer (C4) operations: a truncated linear representation's error on those is generally **larger than, and uncorrelated with,** its error on the gradient phase (§9.2), so a gradient-only battery does not certify them.
+5. **Capability-narrowing ⇒ declared in the envelope, not in `fidelity`.** Most codecs cost only accuracy, and rule 4 is the whole story. A truncated representation of a channel that replay consumes **non-linearly** can instead cost *reach* — leaving some requests unservable at any accuracy — and `fidelity` cannot express that: an `err_max` measured over a battery that never leaves the retained span reports a small number for a request the pack cannot serve at all. Such a codec MUST declare the resulting limit in `replay_envelope` (§11) as well as its `fidelity`. The registered case is the per-walker Field basis stored as `K` temporal modes, which bounds the servable gate bandwidth rather than the field accuracy (§6.4.1) and declares `replay_envelope.acquisition.max_refocusing_pulses`.
 
 The `fidelity` object is **codec-agnostic** — it reports the decoded-vs-raw replay error whatever method produced it — so it lives in the **core** metadata (§10) and is read identically by any replayer or bank; only the codec *algorithms* live in the registry. How to read it: `err_max` is the worst-case replay error over the battery, `floor_max` the irreducible MC noise floor for the same ensemble, and `within_2x_floor: true` means the loss sits below `2×` that floor (scientifically negligible).
 
 One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
 
-> **Walker-preserving requirement.** A codec that **resamples walkers** (a *distributional* codec — it stores a coefficient *distribution*, not per-walker coefficients) breaks per-walker channel alignment. Such a pack **MUST NOT** carry any per-walker channel (`compartment`, `boundary_local_time`, `bound_fraction`, `spin_weights`, `susc_field_basis`) and **MUST** declare only the Gradient tier. Per-walker channels REQUIRE a walker-preserving codec.
+> **Walker-preserving requirement.** A codec that **resamples walkers** (a *distributional* codec — it stores a coefficient *distribution*, not per-walker coefficients) breaks per-walker channel alignment. Such a pack **MUST NOT** carry any per-walker channel (`compartment`, `boundary_local_time`, `spin_weights`, `susc_field_basis`) and **MUST** declare only the Gradient tier. Per-walker channels REQUIRE a walker-preserving codec.
 
-A channel's storage is thus a *size/speed/quality choice*, never a change to the replay contract (§5–6). See [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) for the registered representations and storage codecs and their stored-key tables.
+A channel's storage never changes what a pack *means* — the decoded array of §5 and the operations of §6 are fixed. For channels replay consumes **linearly** it is a pure *size/speed/quality choice*, and §9.2's span argument bounds the trade. For a channel consumed **non-linearly** — the Field basis (§6.4.1), Bloch/MT (§6.5) — a truncated representation may additionally narrow the *domain of validity*, which is a matter for `replay_envelope` (rule 5), never a silent property of the stored bytes. See [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) for the registered representations and storage codecs and their stored-key tables.
 
 ---
 
@@ -455,7 +462,9 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "field": true,                       // C3 — any B0 / susceptibility off-resonance; orientation too when the ℓ=2 maps are present
     "magnetization_transfer": false,     // C4 — magnetization transfer (vector-Bloch)
     "diffusivity_fixed": true,           // D is a fixed pack property, not a knob
-    "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0] }
+    "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0],
+                     "field_modes": 32,              // K temporal modes kept for susc_field_basis
+                     "max_refocusing_pulses": 16 }   // ~K/2 — the gate bandwidth K buys (§9.4 r5)
   },
   "fidelity": {                          // REQUIRED iff any lossy codec (§9); codec-agnostic
     "err_max": 0.0015,                   // worst decoded-vs-raw replay error over `battery`
@@ -479,7 +488,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
 }
 ```
 
-Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. A tier with two representations is satisfied by **either** one: C3 (`field`) by the `susc_field_{0,C,S}` grid maps **or** the `susc_field_basis` channel (+ `walk_params.field_grid`); C4 (`magnetization_transfer`) by the `bound_fraction` channel **or** the `mt` pool descriptor. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any`/`orientation_any`/`field_offresonance`/`field_orientation→field`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags). The substrate bank derives its catalog card from `provenance` and the optional Croissant sidecar (§12); the card's layout is the bank's concern, outside this format.
+Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `per_comp`/`walk_params` fields populated. A tier with two representations is satisfied by **either** one: C3 (`field`) by the `susc_field_{0,C,S}` grid maps **or** the `susc_field_basis` channel (+ `walk_params.field_grid`); C4 (`magnetization_transfer`) by the C1 `bound` occupancy column **or** the `mt` pool descriptor. The envelope flags use explicit, self-describing names; *compatibility:* across the `1.x` line a reader SHOULD also accept the pre-rename aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any`/`orientation_any`/`field_offresonance`/`field_orientation→field`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags). The substrate bank derives its catalog card from `provenance` and the optional Croissant sidecar (§12); the card's layout is the bank's concern, outside this format.
 
 ---
 
@@ -487,7 +496,7 @@ Rules: `diffusivity` and `seed` are fixed pack properties, not knobs. `license` 
 
 A pack is a **certificate**, not a black box. Two objects make its guarantees explicit:
 
-- **`replay_envelope`** — the *domain of validity*: which tiers, and the acquisition/field range (`b_max`, OGSE periods, `B0_list`, …) over which the producer stands behind the pack. A request inside the envelope is guaranteed; a request outside is a *known limit*, and the replayer MUST surface it as such (§13), never silently extrapolate.
+- **`replay_envelope`** — the *domain of validity*: which tiers, and the acquisition/field range (`b_max`, OGSE periods, `B0_list`, `max_refocusing_pulses`, …) over which the producer stands behind the pack. Its limits have two sources — what the *walk* covers (diffusion time, box size) and what a capability-narrowing codec leaves servable (§9.4 rule 5) — and a replayer treats them identically. A request inside the envelope is guaranteed; a request outside is a *known limit*, and the replayer MUST surface it as such (§13), never silently extrapolate.
 - **`fidelity`** — the *measured* error of any lossy encoding against the noise floor (§9.4).
 
 The substrate bank (a separate service) accepts a pack by validating it against this specification (§13) and MAY re-measure `fidelity` independently.

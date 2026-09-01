@@ -39,7 +39,7 @@ Everything follows from this invariant. Two things the spec states up front:
 | **C1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **C2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
 | **C3 Field** | `susc_field_{C,S,0}` grid maps **or** `susc_field_basis` (per-walker, any 3-D morphology) | any `B0`, susceptibility, orientation |
-| **C4 Magnetization transfer** | `bound_fraction` (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
+| **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack
 does not carry. (Tiers are named **C0–C4** — not `T#`, which would collide with the

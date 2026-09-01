@@ -1,7 +1,14 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.4.0 (draft) — one position representation, `bridge_dst`; the four earlier position codecs (`temporal_dct`, `lowrank`, `gaussian`, `marginal`) are **retired and MUST be refused**, which is a breaking change for any pack written before it. 0.3.0 registered `susc_path_dct` for `susc_field_basis` (SPEC §6.4.1) alongside the raw-float16 baseline, the registry's first **capability-narrowing** codec (SPEC §9.4 rule 5).
+**Registry version:** 0.5.0 (draft) — C1 became a set of named **occupancy columns** and the
+separate `bound_fraction` channel was folded into it as the `bound` column: it was the same
+quantized-RLE codec under a second name, and binding is an occupancy like any other. The retired
+`bfrac_rle_*` keys MUST be refused. C2 moved to the bridge form (`blt_bridge_dst` + `blt_start`,
+DST-I of the doubly-pinned cumulative) — a wash on error, but a truncated cosine residual misses
+the stored endpoint by 1.6–6.4% at every `K`, which made segment chaining drift; and `susc_path_dct`
+gained a `bits` container (default **int8** + a per-(channel, band) `susc_path_scale`), half of
+float16 at equal capability. 0.4.0 — one position representation, `bridge_dst`; the four earlier position codecs (`temporal_dct`, `lowrank`, `gaussian`, `marginal`) are **retired and MUST be refused**, which is a breaking change for any pack written before it. 0.3.0 registered `susc_path_dct` for `susc_field_basis` (SPEC §6.4.1) alongside the raw-float16 baseline, the registry's first **capability-narrowing** codec (SPEC §9.4 rule 5).
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
 The core [`SPEC.md`](SPEC.md) §9 defines the two storage concepts and their rules: position
@@ -37,9 +44,8 @@ Every channel is stored raw under its own name.
 |---|---|
 | `positions` | `positions` `(N_w, N_t, 3)` |
 | `spin_weights` | `spin_weights` |
-| `compartment` | `compartment` |
+| `compartment` | `compartment` (one or more occupancy columns) |
 | `boundary_local_time` | `boundary_local_time` |
-| `bound_fraction` | `bound_fraction` |
 | `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` |
 | `susc_field_basis` | `susc_field_basis` `(N_w, N_t, 13)` |
 
@@ -103,20 +109,22 @@ they are **not** positions-like, so the representations above do not apply:
 
 | Decoded channel | Codec | Stored keys | Notes |
 |---|---|---|---|
-| `compartment` (integer labels) | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools) |
-| `compartment` (fractional occupancy) | **quantized RLE** | same keys + meta `fractional:true, Q, scale` | **permeable** substrates: a walker crossing a membrane mid-save has a fractional time-in-compartment, so the channel is near-binary occupancy in `[0, scale]` (∈[0,1] for 2 compartments) rather than integer labels. Quantize to `Q` levels and RLE (same structure as `bound_fraction`); integer RLE would lossily int-cast the fractions. |
-| `bound_fraction` | **quantized RLE** | `bfrac_rle_vals` (uint8, `Q≤256`), `bfrac_rle_lens` (uint16), `bfrac_rle_counts` | occupancy is ~binary with long dwell/free runs. Quantize `[0,1]→{0..Q-1}` (meta `Q`, default 256), RLE rows. Measured **~7×**, replay error ≪ MC floor. Lossy only to the quantization step. |
+| `compartment` → `comp` column (integer labels) | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools). Descriptor `kind: "label"`. |
+| `compartment` → any column (fractional occupancy) | **quantized RLE** | `<name>_rle_vals` (uint8, `Q≤256`), `<name>_rle_lens` (uint16), `<name>_rle_counts`; descriptor `kind: "fraction", Q, scale` | Occupancy is ~binary with long runs, so RLE is the codec; quantize `[0, scale]→{0..Q-1}` (`Q` default 256) because integer RLE would lossily int-cast the fractions. Two cases use it: the `comp` column on a **permeable** substrate (a walker crossing a membrane mid-save has a fractional time-in-compartment) and the `bound` column of an MT pack (dwell/free runs; measured **~7×**, replay error ≪ MC floor). Lossy only to the quantization step. |
 | `boundary_local_time` | **density-aware**: sparse CSR **or** dense int8 (meta `mode`) | sparse: `blt_counts`,`blt_cols`,`blt_qvals`; dense: `blt_dense_q` (int8) | not low-rank (idiosyncratic wall contacts). Density varies by substrate: isolated fibres ~15% nonzero → **sparse** (~3×); packed white matter ~55% → sparse would exceed raw float16, so **dense int8** (1 B/entry, ½ of raw f16, density-independent). Encoder picks the smaller; per-save values kept (any sequence gate, §6.6); quantization within the MC floor. |
 | `susc_field_basis` | raw **float16** (lossy only to f16) | `susc_field_basis` `(N_w, N_t, 13)` | Per-walker Field basis (SPEC §6.4.1). Always valid, walker-preserving, and the only form that carries no envelope restriction. |
 | `susc_field_basis` | **`susc_path_dct`** — temporal DCT-II, `K` modes, float16 | `susc_path_dct` `(N_w, n_ch, K)` | The size form; **capability-narrowing** (SPEC §9.4 rule 5) — see below. |
 
 Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channels[<channel>]` in
-the metadata. The reference implementation also historically stored `boundary_local_time` raw
-under the legacy key `dlog_boundary_unit` and `bound_fraction` raw under `bound_frac`; readers
-SHOULD accept these raw aliases across the `1.x` line.
+the metadata. Per-column descriptors (`name`, `kind`, `Q`, `scale`, `n_t`) live under
+`compression.channels.compartment.columns`. The reference implementation also historically stored
+`boundary_local_time` raw under the legacy key `dlog_boundary_unit`; readers SHOULD accept that raw
+alias across the `1.x` line. There is **no** separate `bound_fraction` channel: the MT bound pool is
+a `bound` column of `compartment` (SPEC §5.2, §6.5), and a pack carrying the retired `bfrac_rle_*`
+keys predates this and MUST be re-encoded.
 
 **Why these are separate codecs.** The positions codecs (low-rank/DCT) exploit temporal
-smoothness and cross-walker correlation. `bound_fraction` (a near-binary step process) and
+smoothness and cross-walker correlation. Occupancy columns (near-binary step processes) and
 `boundary_local_time` (a sparse sum of discrete contact events) have neither property — low-rank
 needs `K>32` and still misses the noise floor on `boundary_local_time` — so RLE and sparsity,
 respectively, are the structure-matched choices.
