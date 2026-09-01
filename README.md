@@ -1,4 +1,7 @@
-# Replay Pack (`.rpk`) — an open format for replayable Monte-Carlo diffusion-MRI walks
+# Replay Pack (`.rpk`) and Replay Phantom (`.rph`)
+
+**Open formats for replayable Monte-Carlo diffusion-MRI: one file for a solved substrate,
+one for arranging solved substrates in space.**
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21692505.svg)](https://doi.org/10.5281/zenodo.21692505)
 
@@ -8,12 +11,26 @@ random walk* through a diffusion-MRI substrate so that the measured signal can b
 waveform, b-tensor, field strength, orientation, `T2`/`T1`, surface relaxivity, or
 magnetization-transfer setting — **without re-running the expensive walk**.
 
-This repository is the **normative specification** of that format, plus a small
-standalone reference implementation and worked examples. Its goal is to let *any*
-Monte-Carlo simulator emit interoperable packs (even partial ones), served by a single
-reference replayer, and pooled in a public substrate bank.
+A **Replay Phantom** arranges solved packs in space. It owns no walkers: it cites packs
+per voxel with volume fractions and orientations, so the expensive object stays shared
+and a whole phantom costs little more than the packs it references.
+
+| | holds | costs | defined in |
+|---|---|---|---|
+| **`.rpk`** | one solved substrate — the walk itself | the expensive object | [`SPEC.md`](SPEC.md) |
+| **`.rph`** | an arrangement of packs over a voxel grid | references, not walkers | [`RPH.md`](RPH.md) |
+
+The pack is the unit and the phantom is how units compose, which is why this repository is
+named for the pack: a phantom adds no capability of its own — its tier is the intersection
+of its packs' — and it is meaningless without them.
+
+This repository is the **normative specification** of both, plus a small standalone
+reference implementation and worked examples. Its goal is to let *any* Monte-Carlo
+simulator emit interoperable packs (even partial ones), served by a single reference
+replayer, and pooled in a public substrate bank.
 
 - **The spec:** [`SPEC.md`](SPEC.md) — the definitive, RFC-2119 document.
+- **The phantom format:** [`RPH.md`](RPH.md) — composing solved packs into a voxel grid.
 - **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representations* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
 - **Metadata schema:** [`schema/rpk_metadata.schema.json`](schema/rpk_metadata.schema.json).
 - **Examples:** [`examples/`](examples/) — a standalone writer + replayer (no dependencies
@@ -45,17 +62,22 @@ A producer declares the tiers it populates; a replayer refuses (never fakes) tie
 does not carry. (Tiers are named **C0–C4** — not `T#`, which would collide with the
 relaxation times `T1`/`T2`.)
 
-### Replay phantoms (`.rph`)
+## Replay phantoms (`.rph`)
 
-A **replay phantom** arranges solved packs in space: per-voxel pack references, volume
-fractions and orientation distributions, and no walkers of its own. One solved pack
-serves every voxel and every orientation that cites it, so a phantom is small and the
-expensive object stays shared. Defined in [`RPH.md`](RPH.md); it is a secondary format
-that adds no capability tier — a phantom's tier is the intersection of its packs'.
+A phantom carries, per voxel, the substrates present with a **geometric fraction each**
+(fractions sum to one — a voxel is always full), a **per-substrate `M0`**, and either up
+to three peaks or an ODF on a grid in a **normatively specified** spherical-harmonic
+basis. A substrate is a referenced pack, an **analytic** closed form (free water, which is
+exactly Gaussian and would be wasteful to store as walkers), or an **inert** filler that
+produces no signal. A phantom MAY **embed** its packs, making it shareable as one
+standalone artifact.
+
+Defined in [`RPH.md`](RPH.md). It adds no capability tier — a phantom's tier is the
+intersection of its packs'.
 
 ## Status
 
-**v0.2.0 (draft for comment).** The `1.x` container schema (channel names, metadata keys) is
+**Pack spec v0.2.0, phantom spec v0.2.0, container `1.3` (drafts for comment).** The `1.x` container schema (channel names, metadata keys) is
 frozen; semantics may be clarified. `0.2.0` adds two OPTIONAL, backward-compatible
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
 plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
