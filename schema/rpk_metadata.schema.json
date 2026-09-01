@@ -83,7 +83,9 @@
           "properties": {
             "b_max": {"type": "number", "description": "Max certified b-value (s/m^2)."},
             "ogse_periods": {"type": "array", "items": {"type": "number"}},
-            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."}
+            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."},
+            "max_refocusing_pulses": {"type": ["integer", "null"], "minimum": 0, "description": "Max refocusing-pulse density (CPMG echoes) the pack is certified for. Present whenever a codec that truncates a non-linearly consumed channel bounds the servable gate bandwidth (SPEC 9.4 rule 5) - notably the per-walker Field basis stored as K temporal modes (SPEC 6.4.1). A request above this is OUTSIDE the envelope and MUST be refused, not extrapolated; `fidelity` does not describe this limit."},
+            "field_modes": {"type": ["integer", "null"], "minimum": 0, "description": "K, the number of temporal modes retained for susc_field_basis, from which max_refocusing_pulses derives (reference implementation: K >= 2*n_refocus). Informative - max_refocusing_pulses is the binding declaration."}
           }
         }
       }
