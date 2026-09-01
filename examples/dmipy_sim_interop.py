@@ -43,7 +43,7 @@ def build_small_pack(path="dmipy_interop.rpk"):
     master = dict(traj=np.asarray(tr, np.float32), dt_traj=float(dt), T_max=0.03,
                   n_walkers=4000, seed=0, D_intra=1.5e-9)
     bank.build_replay_pack(master, id="examples/dmipy-cylinder", method="identity" if
-                           "identity" in getattr(bank, "_cx").ENCODERS else "lowrank",
+                           "identity" in getattr(bank, "_cx").ENCODERS else "bridge_dst",
                            K=None, license="CC0-1.0",
                            citation="Replay Pack interop example, dmrai-lab (2026).",
                            out_path=path, verbose=True)

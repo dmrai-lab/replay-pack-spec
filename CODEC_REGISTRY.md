@@ -42,10 +42,10 @@ Every channel is stored raw under its own name.
 
 | Decoded channel | Stored keys |
 |---|---|
-| `positions` | `positions` `(N_w, N_t, 3)` |
+| `positions` | `positions` `(N_w, N_t, 3)` (identity) or `pos_x`, `pos_y`, `pos_z` `(N_w, K+2)` (`bridge_dst`) |
 | `spin_weights` | `spin_weights` |
 | `compartment` | `compartment` (one or more occupancy columns) |
-| `boundary_local_time` | `boundary_local_time` |
+| `boundary_local_time` | `boundary_local_time`, or the codec keys below |
 | `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` |
 | `susc_field_basis` | `susc_field_basis` `(N_w, N_t, 13)` |
 
@@ -111,9 +111,10 @@ they are **not** positions-like, so the representations above do not apply:
 |---|---|---|---|
 | `compartment` → `comp` column (integer labels) | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs (impermeable pools). Descriptor `kind: "label"`. |
 | `compartment` → any column (fractional occupancy) | **quantized RLE** | `<name>_rle_vals` (uint8, `Q≤256`), `<name>_rle_lens` (uint16), `<name>_rle_counts`; descriptor `kind: "fraction", Q, scale` | Occupancy is ~binary with long runs, so RLE is the codec; quantize `[0, scale]→{0..Q-1}` (`Q` default 256) because integer RLE would lossily int-cast the fractions. Two cases use it: the `comp` column on a **permeable** substrate (a walker crossing a membrane mid-save has a fractional time-in-compartment) and the `bound` column of an MT pack (dwell/free runs; measured **~7×**, replay error ≪ MC floor). Lossy only to the quantization step. |
+| `boundary_local_time` | **`bridge_dst`** — two exact endpoints + DST-I bands of the pinned cumulative (meta `mode: "bridge_dst"`) | `blt_bridge_dst` `(N_w, K)`, `blt_start` (f32), `blt_endpoint` (f32) | The **default** size form. The cumulative `L(n)=Σ ℓ` is smooth and near-linear, so it takes the same split as C0: hold both endpoints and expand only the doubly-pinned residual. Chosen for **exactness, not error** — DST-I beats DCT-II by only 1.0–1.3× on `L` and the slopes match (−0.96 vs −0.99), but a truncated *cosine* residual does not vanish at `n=N_t`, so replay misses the stored total by 1.6–6.4% at **every** `K` and segment chaining drifts ~1.5e-2 regardless of `S`; the sine form is identically zero there. Endpoints stay float32 (they are read by subtraction, §6.3); bands may be float16. Lossless at `K = N_t − 2`. |
 | `boundary_local_time` | **density-aware**: sparse CSR **or** dense int8 (meta `mode`) | sparse: `blt_counts`,`blt_cols`,`blt_qvals`; dense: `blt_dense_q` (int8) | not low-rank (idiosyncratic wall contacts). Density varies by substrate: isolated fibres ~15% nonzero → **sparse** (~3×); packed white matter ~55% → sparse would exceed raw float16, so **dense int8** (1 B/entry, ½ of raw f16, density-independent). Encoder picks the smaller; per-save values kept (any sequence gate, §6.6); quantization within the MC floor. |
 | `susc_field_basis` | raw **float16** (lossy only to f16) | `susc_field_basis` `(N_w, N_t, 13)` | Per-walker Field basis (SPEC §6.4.1). Always valid, walker-preserving, and the only form that carries no envelope restriction. |
-| `susc_field_basis` | **`susc_path_dct`** — temporal DCT-II, `K` modes, float16 | `susc_path_dct` `(N_w, n_ch, K)` | The size form; **capability-narrowing** (SPEC §9.4 rule 5) — see below. |
+| `susc_field_basis` | **`susc_path_dct`** — temporal DCT-II, `K` modes, integer container (meta `bits`, default **8**) | `susc_path_dct` `(N_w, n_ch, K)` int8/int16, `susc_path_scale` `(n_ch, K)` float32 | The size form; **capability-narrowing** (SPEC §9.4 rule 5) — see below. Above its mean the sampled field is nearly white (band variance falls ~1 decade over 63 bands, slope ≈ −0.6, against ≈ −2 for a trajectory), so the transform buys no energy compaction — it buys a basis in which the **gate** is sparse, and the distortion weight is `ε̂_k²`. Bits, not `K`, is therefore the graded knob: int8 at full `K` is half of float16 and beats `K/2` at float16 at equal bytes **while keeping** the refocusing capability truncation forfeits. `bits: null` stores raw floats (the only mode that can be lossless at `K = N_t`). `susc_path_scale` is not walker-indexed and so is read whole. |
 
 Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channels[<channel>]` in
 the metadata. Per-column descriptors (`name`, `kind`, `Q`, `scale`, `n_t`) live under
@@ -128,6 +129,13 @@ smoothness and cross-walker correlation. Occupancy columns (near-binary step pro
 `boundary_local_time` (a sparse sum of discrete contact events) have neither property — low-rank
 needs `K>32` and still misses the noise floor on `boundary_local_time` — so RLE and sparsity,
 respectively, are the structure-matched choices.
+
+**Not registered, and why.** Reducing the `n_ch` components to a few combinations of them was
+measured and **rejected**: they are strongly correlated (rank 4 holds 97% of the variance) but a
+rank-6 KLT at matched bytes is two to three orders worse than band truncation. The distortion
+weight `ε̂_k²` lives on `k` and is blind to `c`, so a discarded *combination* removes signal the
+gate passes at full weight, whereas a discarded *mode* is one the gate barely reaches. Bits belong
+in frequency, never across channels.
 
 ### `susc_path_dct` — the per-walker Field basis in `K` temporal modes
 
