@@ -75,7 +75,7 @@
         "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
         "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
         "field": {"type": "boolean", "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale), and orientation relative to B0. Carried by EITHER the shared l=2 grid maps susc_field_{0,C,S} (SPEC §6.4) OR the per-walker susc_field_basis channel (SPEC §6.4.1, arbitrary 3-D morphology, full main-field direction)."},
-        "magnetization_transfer": {"type": "boolean", "description": "C4: replays MT. Carried by EITHER the per-walker bound_fraction channel (emergent, vector-Bloch, SPEC §6.5) OR the parametric two-pool `mt` pool descriptor (mean-field, Bloch-McConnell Z-spectrum/MTR, SPEC §6.5.1)."},
+        "magnetization_transfer": {"type": "boolean", "description": "C4: replays MT. Carried by EITHER the per-walker `bound` occupancy column of `compartment` (emergent, vector-Bloch, SPEC §6.5) OR the parametric two-pool `mt` pool descriptor (mean-field, Bloch-McConnell Z-spectrum/MTR, SPEC §6.5.1)."},
         "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
         "acquisition": {
           "type": "object",
@@ -102,7 +102,7 @@
     },
     "mt": {
       "type": ["object", "null"],
-      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker bound_fraction) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
+      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker `bound` column) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
       "properties": {
         "model": {"type": "string", "description": "e.g. \"two_pool\"."},
         "f_bound": {"type": "number", "minimum": 0, "maximum": 1, "description": "Equilibrium bound-pool fraction."},
