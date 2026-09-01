@@ -21,13 +21,17 @@ SCHEMA = os.path.join(HERE, "..", "schema", "rpk_metadata.schema.json")
 # its codec sub-array key-groups are in the file. These key-groups mirror CODEC_REGISTRY.md
 # (the living registry) — update them there and here together when a codec is added.
 CHANNEL_KEYS = {
-    "positions": [["positions"], ["dct_coeffs"], ["modes", "coeffs"],
-                  ["modes", "coeff_mean", "coeff_cov"], ["modes", "coeff_quantiles"]],
+    # `bridge_dst` writes pos_{x,y,z}; the four retired position codecs (dct_coeffs, modes+*)
+    # are NOT listed -- a pack carrying them is refused, not read (registry 0.4.0).
+    "positions": [["positions"], ["pos_x", "pos_y", "pos_z"]],
+    # C1 is one or more occupancy columns: `comp` is required, others (e.g. `bound`) optional.
     "compartment": [["compartment"], ["comp_rle_vals", "comp_rle_lens", "comp_rle_counts"]],
     "boundary_local_time": [["boundary_local_time"], ["dlog_boundary_unit"],
+                            ["blt_bridge_dst", "blt_start", "blt_endpoint"],
                             ["blt_counts", "blt_cols", "blt_qvals"], ["blt_dense_q"]],
+    # MT's bound pool is a C1 column, not a channel: bfrac_rle_* is retired (registry 0.5.0).
     "bound_fraction": [["bound_fraction"], ["bound_frac"],
-                       ["bfrac_rle_vals", "bfrac_rle_lens", "bfrac_rle_counts"]],
+                       ["bound_rle_vals", "bound_rle_lens", "bound_rle_counts"]],
     "spin_weights": [["spin_weights"]],
     "susc_field_C": [["susc_field_C"]], "susc_field_S": [["susc_field_S"]],
     "susc_field_0": [["susc_field_0"]],
@@ -38,13 +42,21 @@ TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MU
     "magnetization_transfer": ["bound_fraction"],
     "field": ["susc_field_0"],   # isotropic Phi_0 is the minimum; l=2 C/S add orientation
 }
-# pre-rename 1.x aliases accepted on read (SPEC §10)
+# pre-rename 0.x aliases accepted on read (SPEC §10)
 ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
                "rho": "surface_relaxivity", "B0_any": "field", "orientation_any": "field",
                "field_offresonance": "field", "field_orientation": "field",
                "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
-LOSSLESS_CODECS = {"identity", "temporal_dct", "lowrank"}
+# `bridge_dst` is lossless only at K = N_t - 2 (the interior dimension), so it is not
+# unconditionally lossless and does not belong here; `identity` is the only codec that is.
+LOSSLESS_CODECS = {"identity"}
+# Refused on sight rather than read: each stores different quantities under names a current
+# reader would reinterpret, yielding plausible wrong numbers (SPEC §9.4, registry 0.4.0/0.5.0).
+RETIRED_CODECS = {"temporal_dct", "lowrank", "gaussian", "marginal"}
+RETIRED_KEYS = {"dct_coeffs": "positions as cosine bands (retired: use bridge_dst / pos_*)",
+                "blt_dct_coeffs": "C2 as detrended cosine bands (retired: use blt_bridge_dst)",
+                "bfrac_rle_vals": "MT as its own channel (retired: use the C1 `bound` column)"}
 
 
 def _present(channel, keys):
@@ -53,7 +65,7 @@ def _present(channel, keys):
 
 
 def _norm_env(meta):
-    """replay_envelope with 1.x aliases folded onto the explicit names (SPEC §10)."""
+    """replay_envelope with 0.x aliases folded onto the explicit names (SPEC §10)."""
     env = dict(meta.get("replay_envelope", {}))
     for old, new in ENV_ALIASES.items():
         if old in env and new not in env:
@@ -71,7 +83,7 @@ def check(path):
     except Exception as e:
         return [f"not a readable safetensors file: {e}"], []
 
-    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" canonical, "json" = 1.x legacy alias
+    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" canonical, "json" = 0.x legacy alias
     if not blob:
         return ["__metadata__ has no 'rpk' (or legacy 'json') JSON blob (SPEC §12)"], []
     meta = json.loads(blob)
@@ -87,8 +99,22 @@ def check(path):
     except Exception as e:
         errs.append(f"metadata fails schema: {getattr(e, 'message', e)}")
 
-    # 2. required positions channel (codec-aware; shape only checkable for identity)
+    # 2. retired representations are REFUSED, not read. Each stores different quantities under
+    # names a current reader would reinterpret, so a stale pack decodes to plausible wrong numbers
+    # rather than failing. The pack must be re-encoded from its master.
     method = meta.get("compression", {}).get("method", "identity")
+    if method in RETIRED_CODECS:
+        errs.append(f"position codec {method!r} is retired and MUST be refused; re-encode as "
+                    f"'bridge_dst' (SPEC §9.4, registry 0.4.0)")
+    for k, why in RETIRED_KEYS.items():
+        if k in keys:
+            errs.append(f"retired key {k!r} present — {why}; re-encode from the master")
+    c1 = ((meta.get("compression", {}).get("channels") or {}).get("compartment") or {})
+    if c1 and "columns" not in c1:
+        errs.append("C1 metadata predates the occupancy-column layout (no 'columns'); the arrays "
+                    "are readable but declared differently — re-encode (registry 0.5.0)")
+
+    # 2b. required positions channel (codec-aware; shape only checkable for identity)
     if not _present("positions", keys):
         errs.append("missing required 'positions' channel / codec sub-arrays (SPEC §5.1/§9)")
     elif method == "identity":
@@ -97,7 +123,7 @@ def check(path):
     else:
         warns.append(f"codec {method!r}: positions shape checked only after decode")
 
-    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 1.x aliases)
+    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 0.x aliases)
     env = _norm_env(meta)
     for flag, chans in TIER_CHANNELS.items():
         if env.get(flag):

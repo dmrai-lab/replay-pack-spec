@@ -1,6 +1,16 @@
-# Replay Pack (`.rpk`) — an open format for replayable Monte-Carlo diffusion-MRI walks
+# Replay Pack (`.rpk`) and Replay Phantom (`.rph`)
+
+**Open formats for replayable Monte-Carlo diffusion-MRI: one file for a solved substrate,
+one for arranging solved substrates in space.**
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21692505.svg)](https://doi.org/10.5281/zenodo.21692505)
+
+![Solve once into a Replay Pack, compose packs into a Replay Phantom, replay the phantom for any acquisition within its declared envelope](docs/figures/replay-overview.png)
+
+*Solve the microphysics once per substrate and persist it (`.rpk`); arrange solved packs
+into a voxel grid with per-voxel fractions and orientations (`.rph`); then interrogate that
+phantom with any acquisition **its declared envelope covers** — no new Monte Carlo. The
+expensive step happens once; everything to its right is contraction and composition.*
 
 A **Replay Pack** is a portable, code-free file that stores the *state of a Monte-Carlo
 random walk* through a diffusion-MRI substrate so that the measured signal can be
@@ -8,12 +18,26 @@ random walk* through a diffusion-MRI substrate so that the measured signal can b
 waveform, b-tensor, field strength, orientation, `T2`/`T1`, surface relaxivity, or
 magnetization-transfer setting — **without re-running the expensive walk**.
 
-This repository is the **normative specification** of that format, plus a small
-standalone reference implementation and worked examples. Its goal is to let *any*
-Monte-Carlo simulator emit interoperable packs (even partial ones), served by a single
-reference replayer, and pooled in a public substrate bank.
+A **Replay Phantom** arranges solved packs in space. It owns no walkers: it cites packs
+per voxel with volume fractions and orientations, so the expensive object stays shared
+and a whole phantom costs little more than the packs it references.
+
+| | holds | costs | defined in |
+|---|---|---|---|
+| **`.rpk`** | one solved substrate — the walk itself | the expensive object | [`SPEC.md`](SPEC.md) |
+| **`.rph`** | an arrangement of packs over a voxel grid | references, not walkers | [`RPH.md`](RPH.md) |
+
+The pack is the unit and the phantom is how units compose, which is why this repository is
+named for the pack: a phantom adds no capability of its own — its tier is the intersection
+of its packs' — and it is meaningless without them.
+
+This repository is the **normative specification** of both, plus a small standalone
+reference implementation and worked examples. Its goal is to let *any* Monte-Carlo
+simulator emit interoperable packs (even partial ones), served by a single reference
+replayer, and pooled in a public substrate bank.
 
 - **The spec:** [`SPEC.md`](SPEC.md) — the definitive, RFC-2119 document.
+- **The phantom format:** [`RPH.md`](RPH.md) — composing solved packs into a voxel grid.
 - **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representations* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
 - **Metadata schema:** [`schema/rpk_metadata.schema.json`](schema/rpk_metadata.schema.json).
 - **Examples:** [`examples/`](examples/) — a standalone writer + replayer (no dependencies
@@ -39,19 +63,32 @@ Everything follows from this invariant. Two things the spec states up front:
 | **C1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **C2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
 | **C3 Field** | `susc_field_{C,S,0}` grid maps **or** `susc_field_basis` (per-walker, any 3-D morphology) | any `B0`, susceptibility, orientation |
-| **C4 Magnetization transfer** | `bound_fraction` (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
+| **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack
 does not carry. (Tiers are named **C0–C4** — not `T#`, which would collide with the
 relaxation times `T1`/`T2`.)
 
+## Replay phantoms (`.rph`)
+
+A phantom carries, per voxel, the substrates present with a **geometric fraction each**
+(fractions sum to one — a voxel is always full), a **per-substrate `M0`**, and either up
+to three peaks or an ODF on a grid in a **normatively specified** spherical-harmonic
+basis. A substrate is a referenced pack, an **analytic** closed form (free water, which is
+exactly Gaussian and would be wasteful to store as walkers), or an **inert** filler that
+produces no signal. A phantom MAY **embed** its packs, making it shareable as one
+standalone artifact.
+
+Defined in [`RPH.md`](RPH.md). It adds no capability tier — a phantom's tier is the
+intersection of its packs'.
+
 ## Status
 
-**v0.2.0 (draft for comment).** The `1.x` container schema (channel names, metadata keys) is
-frozen; semantics may be clarified. `0.2.0` adds two OPTIONAL, backward-compatible
+**Pack spec v0.3.0, phantom spec v0.2.0, codec registry v0.5.0, container `0.3` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
+minor bump MAY break, and `0.3` does (it removes a channel). `0.2.0` adds two OPTIONAL, backward-compatible
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
 plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
-implementation (dmipy-sim, private for now) emits `rpk_schema_version = "1.2"`.
+implementation (dmipy-sim, private for now) emits `rpk_schema_version = "0.3"`.
 
 Intended trajectory: this spec is deposited (Zenodo) to **fix the format's definition and
 date**; reference tooling and example substrates open thereafter.

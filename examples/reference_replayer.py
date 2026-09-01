@@ -22,7 +22,7 @@ def load_rpk(path):
         hdr = f.metadata() or {}
         for k in f.keys():
             arrays[k] = f.get_tensor(k)
-    # canonical header key is "rpk"; "json" is the accepted 1.x legacy alias (SPEC §12)
+    # canonical header key is "rpk"; "json" is the accepted 0.x legacy alias (SPEC §12)
     blob = hdr.get("rpk") or hdr.get("json")
     meta = json.loads(blob) if blob else dict(hdr)
     return arrays, meta
@@ -62,7 +62,7 @@ def replay_relaxation_logweight(arrays, meta, T2=None, T1=None, transverse=True)
     Requires the Relaxation tier. `T2`/`T1` are lists indexed by compartment id;
     default to `per_comp`. Returns (N_w,) log-weights (<=0)."""
     env = meta.get("replay_envelope", {})
-    if not (env.get("bulk_relaxation") or env.get("relaxation") or env.get("T1T2")):  # +1.x aliases
+    if not (env.get("bulk_relaxation") or env.get("relaxation") or env.get("T1T2")):  # +0.x aliases
         raise ValueError("pack does not declare the Relaxation tier; "
                          "capability not present (SPEC §7/§13).")
     comp = np.asarray(arrays["compartment"], np.int64)      # (N_w, N_t)

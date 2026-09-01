@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dmrai.org/schema/rpk_metadata.schema.json",
-  "title": "Replay Pack metadata (rpk_schema_version 1.x)",
+  "title": "Replay Pack metadata (rpk_schema_version 0.x)",
   "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See SPEC.md.",
   "type": "object",
   "required": ["rpk_schema_version", "id", "walk_params", "compression", "replay_envelope", "license", "citation"],
@@ -9,7 +9,7 @@
   "properties": {
     "rpk_schema_version": {
       "type": "string",
-      "pattern": "^1\\.[0-9]+$",
+      "pattern": "^0\\.[0-9]+$",
       "description": "Semantic version of the container schema. Minor bumps add optional fields."
     },
     "id": {
@@ -68,14 +68,14 @@
     "replay_envelope": {
       "type": "object",
       "required": ["gradient", "diffusivity_fixed"],
-      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 0.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
       "additionalProperties": true,
       "properties": {
         "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},
         "bulk_relaxation": {"type": "boolean", "description": "T1: replays any intrinsic per-compartment T2/T1 (distinct from surface_relaxivity)."},
         "surface_relaxivity": {"type": "boolean", "description": "T2: replays any surface relaxivity rho."},
         "field": {"type": "boolean", "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale), and orientation relative to B0. Carried by EITHER the shared l=2 grid maps susc_field_{0,C,S} (SPEC §6.4) OR the per-walker susc_field_basis channel (SPEC §6.4.1, arbitrary 3-D morphology, full main-field direction)."},
-        "magnetization_transfer": {"type": "boolean", "description": "C4: replays MT. Carried by EITHER the per-walker bound_fraction channel (emergent, vector-Bloch, SPEC §6.5) OR the parametric two-pool `mt` pool descriptor (mean-field, Bloch-McConnell Z-spectrum/MTR, SPEC §6.5.1)."},
+        "magnetization_transfer": {"type": "boolean", "description": "C4: replays MT. Carried by EITHER the per-walker `bound` occupancy column of `compartment` (emergent, vector-Bloch, SPEC §6.5) OR the parametric two-pool `mt` pool descriptor (mean-field, Bloch-McConnell Z-spectrum/MTR, SPEC §6.5.1)."},
         "diffusivity_fixed": {"const": true, "description": "Diffusivity is a fixed pack property, not a knob."},
         "acquisition": {
           "type": "object",
@@ -83,7 +83,9 @@
           "properties": {
             "b_max": {"type": "number", "description": "Max certified b-value (s/m^2)."},
             "ogse_periods": {"type": "array", "items": {"type": "number"}},
-            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."}
+            "B0_list": {"type": "array", "items": {"type": "number"}, "description": "Field strengths (T) covered by the Field tier."},
+            "max_refocusing_pulses": {"type": ["integer", "null"], "minimum": 0, "description": "Max refocusing-pulse density (CPMG echoes) the pack is certified for. Present whenever a codec that truncates a non-linearly consumed channel bounds the servable gate bandwidth (SPEC 9.4 rule 5) - notably the per-walker Field basis stored as K temporal modes (SPEC 6.4.1). A request above this is OUTSIDE the envelope and MUST be refused, not extrapolated; `fidelity` does not describe this limit."},
+            "field_modes": {"type": ["integer", "null"], "minimum": 0, "description": "K, the number of temporal modes retained for susc_field_basis, from which max_refocusing_pulses derives (reference implementation: K >= 2*n_refocus). Informative - max_refocusing_pulses is the binding declaration."}
           }
         }
       }
@@ -100,7 +102,7 @@
     },
     "mt": {
       "type": ["object", "null"],
-      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker bound_fraction) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
+      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker `bound` column) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
       "properties": {
         "model": {"type": "string", "description": "e.g. \"two_pool\"."},
         "f_bound": {"type": "number", "minimum": 0, "maximum": 1, "description": "Equilibrium bound-pool fraction."},
