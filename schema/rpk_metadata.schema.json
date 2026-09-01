@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dmrai.org/schema/rpk_metadata.schema.json",
-  "title": "Replay Pack metadata (rpk_schema_version 1.x)",
+  "title": "Replay Pack metadata (rpk_schema_version 0.x)",
   "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See SPEC.md.",
   "type": "object",
   "required": ["rpk_schema_version", "id", "walk_params", "compression", "replay_envelope", "license", "citation"],
@@ -9,7 +9,7 @@
   "properties": {
     "rpk_schema_version": {
       "type": "string",
-      "pattern": "^1\\.[0-9]+$",
+      "pattern": "^0\\.[0-9]+$",
       "description": "Semantic version of the container schema. Minor bumps add optional fields."
     },
     "id": {
@@ -68,7 +68,7 @@
     "replay_envelope": {
       "type": "object",
       "required": ["gradient", "diffusivity_fixed"],
-      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 1.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
+      "description": "Declared capability tiers and acquisition domain (SPEC §7/§11). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 0.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
       "additionalProperties": true,
       "properties": {
         "gradient": {"const": true, "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."},

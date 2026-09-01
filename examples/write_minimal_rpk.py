@@ -11,7 +11,7 @@ import json
 import numpy as np
 from safetensors.numpy import save_file
 
-RPK_SCHEMA_VERSION = "1.1"
+RPK_SCHEMA_VERSION = "0.3"
 
 
 def make_free_diffusion_walk(n_walkers, n_t, dt, D, seed=0):

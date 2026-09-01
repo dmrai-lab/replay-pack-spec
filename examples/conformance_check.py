@@ -42,7 +42,7 @@ TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MU
     "magnetization_transfer": ["bound_fraction"],
     "field": ["susc_field_0"],   # isotropic Phi_0 is the minimum; l=2 C/S add orientation
 }
-# pre-rename 1.x aliases accepted on read (SPEC §10)
+# pre-rename 0.x aliases accepted on read (SPEC §10)
 ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
                "rho": "surface_relaxivity", "B0_any": "field", "orientation_any": "field",
                "field_offresonance": "field", "field_orientation": "field",
@@ -65,7 +65,7 @@ def _present(channel, keys):
 
 
 def _norm_env(meta):
-    """replay_envelope with 1.x aliases folded onto the explicit names (SPEC §10)."""
+    """replay_envelope with 0.x aliases folded onto the explicit names (SPEC §10)."""
     env = dict(meta.get("replay_envelope", {}))
     for old, new in ENV_ALIASES.items():
         if old in env and new not in env:
@@ -83,7 +83,7 @@ def check(path):
     except Exception as e:
         return [f"not a readable safetensors file: {e}"], []
 
-    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" canonical, "json" = 1.x legacy alias
+    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" canonical, "json" = 0.x legacy alias
     if not blob:
         return ["__metadata__ has no 'rpk' (or legacy 'json') JSON blob (SPEC §12)"], []
     meta = json.loads(blob)
@@ -123,7 +123,7 @@ def check(path):
     else:
         warns.append(f"codec {method!r}: positions shape checked only after decode")
 
-    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 1.x aliases)
+    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 0.x aliases)
     env = _norm_env(meta)
     for flag, chans in TIER_CHANNELS.items():
         if env.get(flag):

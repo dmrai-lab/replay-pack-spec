@@ -120,7 +120,7 @@ Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channe
 the metadata. Per-column descriptors (`name`, `kind`, `Q`, `scale`, `n_t`) live under
 `compression.channels.compartment.columns`. The reference implementation also historically stored
 `boundary_local_time` raw under the legacy key `dlog_boundary_unit`; readers SHOULD accept that raw
-alias across the `1.x` line. There is **no** separate `bound_fraction` channel: the MT bound pool is
+alias across the `0.x` line. There is **no** separate `bound_fraction` channel: the MT bound pool is
 a `bound` column of `compartment` (SPEC §5.2, §6.5), and a pack carrying the retired `bfrac_rle_*`
 keys predates this and MUST be re-encoded.
 
