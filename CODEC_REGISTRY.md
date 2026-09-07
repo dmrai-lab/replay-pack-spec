@@ -11,7 +11,7 @@ gained a `bits` container (default **int8** + a per-(channel, band) `susc_path_s
 float16 at equal capability. 0.4.0 — one position representation, `bridge_dst`; the four earlier position codecs (`temporal_dct`, `lowrank`, `gaussian`, `marginal`) are **retired and MUST be refused**, which is a breaking change for any pack written before it. 0.3.0 registered `susc_path_dct` for `susc_field_basis` (SPEC §6.4.1) alongside the raw-float16 baseline, the registry's first **capability-narrowing** codec (SPEC §9.4 rule 5).
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
-The core [`SPEC.md`](SPEC.md) §9 defines the two storage concepts and their rules: position
+The core [`RPK.md`](RPK.md) §9 defines the two storage concepts and their rules: position
 **representations** (§9.1) and their exactness *domain* (§9.2), per-channel **storage codecs**
 (§9.3), and the interface every method MUST satisfy (§9.4) — declared in `compression.method`,
 decodes to the §5 array contract, `identity` baseline, lossy self-certifies. This registry lists

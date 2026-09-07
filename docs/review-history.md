@@ -9,7 +9,7 @@ First version of the **Replay Pack (`.rpk`)** open specification, opened against
 
 ## What to review
 The whole diff is the first version. Suggested reading order:
-1. **`SPEC.md`** — the normative document. Key sections to scrutinize:
+1. **`RPK.md`** — the normative document. Key sections to scrutinize:
    - §3 the **replay invariant** (the founding axiom) and the state-vs-knobs boundary.
    - §5 **channels** + §6 **replay operations** (the exact math each channel feeds).
    - §7 **capability tiers** (T0 Gradient → T4 Exchange), independent + partial-producer friendly.
@@ -47,19 +47,19 @@ i think these properties must have more explicit names, or at least a explicit d
 
 right now we don't have permeability as a replay knob no? if we figure out a way to do it later then we can add it at a next version of the spec
 
-### `SPEC.md:161`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:161`  — @rutgerfick  ·  2026-07-27
 
 does it have to be an *anisotropic* scale? can't it be isotropic? or can a generalized suscpetibility tensor be provided?
 
-### `SPEC.md:168`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:168`  — @rutgerfick  ·  2026-07-27
 
 why focus on spin echo refocussing sign only? we can do a GRE (no 180) or PGSTE (2x90) as well. epx_k doesn't make sense for pgste for example only being -1 and 1 no?
 
-### `SPEC.md:208`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:208`  — @rutgerfick  ·  2026-07-27
 
 again this doesn't make sense. any gradien tor RF pulse can be fired so this sign flip is PGSE only special casing that is irrelevant for the replay
 
-### `SPEC.md:320`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:320`  — @rutgerfick  ·  2026-07-27
 
 this codec and compression section is very nicely fleshed out but it also imagines a lot of normal "keys" for compression parameters that completely don't exist yet right? like we are coming up with these compression algorithms in the paper, and not even all these variables mean anything without the contex tof the compression algorithm iself. 
 
@@ -75,19 +75,19 @@ Agreed — renamed all envelope flags to explicit, self-describing names with de
 
 Agreed — removed `permeability` from `replay_envelope` entirely (it's not a replay knob: crossing changes the trajectory). The fixed value the walk used now goes under `provenance`. If we ever make crossing replayable it's a new tier in a later version (SPEC §7 note + §14). Also dropped the now-meaningless `rf` flag.
 
-### `SPEC.md:161`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:161`  — @rutgerfick  ·  2026-07-27
 
 Good catch — no longer hardcoded to anisotropic. §6.4 now frames the Field channels as normalized off-resonance *basis maps*: `Φ0` = isotropic (m=0), `ΦC/ΦS` = ℓ=2 anisotropic, so the tier covers isotropic and/or axially-anisotropic susceptibility. A fully general rank-2 susceptibility *tensor* field is flagged as a §14 extension (needs a richer basis). `delta_chi_a` is now described as just the anisotropic scale the maps are normalized to.
 
-### `SPEC.md:168`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:168`  — @rutgerfick  ·  2026-07-27
 
 You're right, this was PGSE-shaped and `ε_k∈{+1,−1}` can't express PGSTE. Reworked: new §6.6 makes the *acquisition* (gradients **and** RF) a replay knob. Scalar tiers take a general per-step transverse-phase gate `s(t)`: `+1` for GRE, sign-flip at each 180° for SE/CPMG, and **`0` during z-storage for STE/PGSTE** (so `{−1,0,+1}`). Arbitrary RF (non-180° flips, adiabatic, MT sat) → the vector-Bloch replay (§6.5). No sequence is stored in the pack.
 
-### `SPEC.md:208`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:208`  — @rutgerfick  ·  2026-07-27
 
 Agreed — removed. §8.4 no longer mentions refocusing time; it now just says a producer MUST NOT bake any sequence choice into the pack. Refocusing is a property of the replayed sequence (§6.6), not of the walk.
 
-### `SPEC.md:320`  — @rutgerfick  ·  2026-07-27
+### `RPK.md:320`  — @rutgerfick  ·  2026-07-27
 
 Agreed — this was coupling the frozen format to WIP compression research. §9 now defines only the codec *interface* (declared name+params, decodes-to-§5-contract, `identity` baseline, lossy self-certifies) plus the one structural rule (distributional codecs are Gradient-only). The concrete codecs and their reserved storage keys moved to a new, independently versioned **CODEC_REGISTRY.md** — algorithms land there as they solidify in the paper, without touching the core spec or bumping `rpk_schema_version`.
 

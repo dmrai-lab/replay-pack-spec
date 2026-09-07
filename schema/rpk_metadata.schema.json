@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dmrai.org/schema/rpk_metadata.schema.json",
   "title": "Replay Pack metadata (rpk_schema_version 0.x)",
-  "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See SPEC.md.",
+  "description": "Normative schema for the metadata object embedded in a .rpk safetensors __metadata__ header. See RPK.md.",
   "type": "object",
   "required": ["rpk_schema_version", "id", "walk_params", "compression", "replay_envelope", "license", "citation"],
   "additionalProperties": true,

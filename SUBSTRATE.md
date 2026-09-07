@@ -1,6 +1,6 @@
 # The Substrate Specification (`.sub.json`)
 
-*Companion to the Replay Pack Specification (`SPEC.md`) and the Replay Phantom Specification (`RPH.md`).
+*Companion to the Replay Pack Specification (`RPK.md`) and the Replay Phantom Specification (`RPH.md`).
 Draft `0.2.1` for comment; nothing is numbered `1.0` before publication. `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
@@ -10,7 +10,7 @@ walker is in*: the domain and what its faces do, the water pools and their bulk 
 between pools and what each wall does to a spin that hits it from either side, which pools are
 populated at `t = 0`, which pools carry a magnetic susceptibility, and what the substrate was asked to
 be versus what it turned out to be. It is the **only** input a conformant Monte-Carlo generator
-accepts, and every Replay Pack (`.rpk`, §10 of `SPEC.md`) embeds the spec of the substrate it walked.
+accepts, and every Replay Pack (`.rpk`, §10 of `RPK.md`) embeds the spec of the substrate it walked.
 
 It exists because a substrate that is a program (a class, a loader, a notebook) cannot be audited,
 reproduced or exchanged, and because the same ambiguity re-appears at every stage: whether the space
@@ -37,7 +37,7 @@ file format: surfaces are referenced as files in open formats (§3.4).
 - **Request / realisation** — for a generated substrate, what the generator was asked for and what it
   produced, recorded separately so a consumer can tell the two apart.
 
-Units are SI throughout (metres, seconds, m²/s, m/s, tesla), as in `SPEC.md` §4.1. Positions and
+Units are SI throughout (metres, seconds, m²/s, m/s, tesla), as in `RPK.md` §4.1. Positions and
 directions are in the **substrate frame**; an acquisition rotation is applied by the engine and never
 changes the spec.
 
@@ -116,7 +116,7 @@ An array. Each wall:
   `format` (`ply`, `obj`, `stl`), `scale` (file units → metres), `sha256`.
 - `instances` (optional): arrays of per-instance parameters (`centers`, `radii`, …) so a packing of
   `N` identical-role objects is **one** wall entry with `N` instances sharing pools and properties;
-  instance `k` is the `k`-th object where a consumer needs object ids (`SPEC.md` §8.5).
+  instance `k` is the `k`-th object where a consumer needs object ids (`RPK.md` §8.5).
 
 Two walls MAY share a pool on one side (a myelin sheath is `inner: intra|myelin` and
 `outer: myelin|extra`). A pool MUST be bounded by walls or by `reflect`/`periodic` faces unless it is
@@ -157,7 +157,7 @@ what was done to the source: dropped surfaces, box choice, unit scale, g-ratio m
 
 1. A walker's pool at `t = 0` is the pool it was seeded in (§3.6). Its pool changes only by a granted
    crossing at a wall with non-zero `permeability` in that direction. The engine MUST reject any step
-   that would change the pool otherwise (`SPEC.md` §8.5).
+   that would change the pool otherwise (`RPK.md` §8.5).
 2. A wall hit applies, from the side hit, `surface_relaxivity` as a boundary local time increment and
    `mt_reactivity` as a binding probability; a crossing decision uses `permeability` for the direction
    of travel. A wall with `outside_pool: null` reflects always.

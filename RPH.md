@@ -5,7 +5,7 @@
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 A **replay phantom** is a spatial arrangement of solved substrates -- an assembly of replay
-packs ([`SPEC.md`](SPEC.md)) -- together with the per-voxel information needed to compose them
+packs ([`RPK.md`](RPK.md)) -- together with the per-voxel information needed to compose them
 into a signal. It stores **no walkers and no trajectories of its own**. Everything physical
 lives in the packs; the phantom adds only *which substrates are where, how they are oriented,
 in what proportion, and with what proton density*.
@@ -90,7 +90,7 @@ express.
 
 | `kind` | Response from | Needs a pack | Needs an orientation |
 |---|---|---|---|
-| `pack` | stored walkers (`SPEC.md`) | yes | yes |
+| `pack` | stored walkers (`RPK.md`) | yes | yes |
 | `analytic` | a declared closed form | no | only if the model is anisotropic |
 | `inert` | nothing | no | no |
 

@@ -24,7 +24,7 @@ and a whole phantom costs little more than the packs it references.
 
 | | holds | costs | defined in |
 |---|---|---|---|
-| **`.rpk`** | one solved substrate — the walk itself | the expensive object | [`SPEC.md`](SPEC.md) |
+| **`.rpk`** | one solved substrate — the walk itself | the expensive object | [`RPK.md`](RPK.md) |
 | **`.rph`** | an arrangement of packs over a voxel grid | references, not walkers | [`RPH.md`](RPH.md) |
 
 The pack is the unit and the phantom is how units compose, which is why this repository is
@@ -36,7 +36,7 @@ reference implementation and worked examples. Its goal is to let *any* Monte-Car
 simulator emit interoperable packs (even partial ones), served by a single reference
 replayer, and pooled in a public substrate bank.
 
-- **The spec:** [`SPEC.md`](SPEC.md) — the definitive, RFC-2119 document.
+- **The spec:** [`RPK.md`](RPK.md) — the definitive, RFC-2119 document.
 - **The phantom format:** [`RPH.md`](RPH.md) — composing solved packs into a voxel grid.
 - **Substrate spec:** [`SUBSTRATE.md`](SUBSTRATE.md) — the declarative description of the substrate a walk is run on (domain and its faces, pools with bulk properties and susceptibility, walls with per-side physics, seeding, request vs realisation); the only input a conformant generator accepts, embedded in every pack. Schema: [`schema/substrate.schema.json`](schema/substrate.schema.json); examples in [`examples/substrates/`](examples/substrates/).
 - **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representations* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
@@ -104,7 +104,7 @@ that is where specification discussion happens.
 
 Dual-licensed by artifact type:
 
-- **Specification & documentation** (`SPEC.md`, this README, schema docs): **CC-BY-4.0** — see [`LICENSE-SPEC`](LICENSE-SPEC).
+- **Specification & documentation** (`RPK.md`, this README, schema docs): **CC-BY-4.0** — see [`LICENSE-SPEC`](LICENSE-SPEC).
 - **Code** (`examples/`, `schema/` machinery): **Apache-2.0** — see [`LICENSE`](LICENSE).
 
 Adopt, implement, and extend freely under those terms. A pack's *own* `license` field records
