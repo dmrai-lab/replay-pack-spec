@@ -1,7 +1,7 @@
 # The Substrate Specification (`.sub.json`)
 
 *Companion to the Replay Pack Specification (`SPEC.md`) and the Replay Phantom Specification (`RPH.md`).
-Draft `0.2.0` for comment; nothing is numbered `1.0` before publication. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
+Draft `0.2.1` for comment; nothing is numbered `1.0` before publication. `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
 
@@ -52,6 +52,7 @@ A spec is one JSON object (`schema/substrate.schema.json` is normative for types
 | `substrate_spec_version` | string | `"0.1"` |
 | `id` | string | stable identifier; a pack's `provenance.substrate.id` equals it |
 | `description` | string | free text |
+| `nominal_field_T` | number or null | the B0 (tesla) the pools' nominal `T2` / `T1` were calibrated at, and so the field strength a **nominal replay** (the spec's values, nothing overridden) runs at; `null` when the producer did not calibrate for a field |
 
 ### 3.2 `domain`
 

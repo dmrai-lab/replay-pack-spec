@@ -85,7 +85,7 @@ intersection of its packs'.
 
 ## Status
 
-**Pack spec v0.4.0, phantom spec v0.2.0, substrate spec v0.2.0, codec registry v0.5.0, container `0.4` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
+**Pack spec v0.4.0, phantom spec v0.2.0, substrate spec v0.2.1, codec registry v0.5.0, container `0.4` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
 minor bump MAY break, and `0.4` does: a pack stores channels and no tissue value (`per_comp` and the bound pool's relaxation
 times leave the metadata; the embedded substrate specification defines the compartment ids). `0.3` removes a channel. `0.2.0` adds two OPTIONAL, backward-compatible
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
