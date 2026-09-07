@@ -43,14 +43,9 @@
         }
       }
     },
-    "per_comp": {
+    "substrate": {
       "type": ["object", "null"],
-      "description": "Per-compartment relaxation; index = compartment id (0 = extra/free). Required iff Bulk-relaxation tier.",
-      "properties": {
-        "T2": {"type": ["array", "null"], "items": {"type": "number"}},
-        "T1": {"type": ["array", "null"], "items": {"type": "number"}},
-        "R": {"type": ["array", "null"], "description": "Optional per-compartment 3x3 rotation(s) mapping the compartment's local frame to the lab frame, used to orient the anisotropic Field maps (SPEC §6.4). null if unoriented."}
-      }
+      "description": "The substrate specification the walk was driven by (SUBSTRATE.md, schema substrate.schema.json): defines the compartment ids as its pool ids and carries the NOMINAL tissue values. Recommended. No tissue value is a pack property (SPEC 8.5)."
     },
     "compression": {
       "type": "object",
@@ -102,13 +97,11 @@
     },
     "mt": {
       "type": ["object", "null"],
-      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker `bound` column) representation. Fixed-at-walk-time geometry/tissue properties, not knobs.",
+      "description": "Parametric two-pool qMT pool descriptor (SPEC §6.5.1). Present iff C4 is declared in the mean-field (not per-walker `bound` column) representation. What the walk fixed (f_bound, k_forward, S_over_V); the bound pool's relaxation times are replay knobs.",
       "properties": {
         "model": {"type": "string", "description": "e.g. \"two_pool\"."},
         "f_bound": {"type": "number", "minimum": 0, "maximum": 1, "description": "Equilibrium bound-pool fraction."},
         "k_forward": {"type": "number", "minimum": 0, "description": "Forward exchange rate k_f = kappa*S/V (s^-1)."},
-        "T2_bound": {"type": "number", "exclusiveMinimum": 0, "description": "Bound-pool T2 (s)."},
-        "T1_bound": {"type": "number", "exclusiveMinimum": 0, "description": "Bound-pool T1 (s)."},
         "S_over_V": {"type": "number", "minimum": 0, "description": "Myelin surface-to-free-volume ratio the pool was derived from (m^-1)."}
       }
     },

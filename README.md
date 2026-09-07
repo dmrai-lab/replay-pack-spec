@@ -85,11 +85,12 @@ intersection of its packs'.
 
 ## Status
 
-**Pack spec v0.3.0, phantom spec v0.2.0, substrate spec v0.1.0, codec registry v0.5.0, container `0.3` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
-minor bump MAY break, and `0.3` does (it removes a channel). `0.2.0` adds two OPTIONAL, backward-compatible
+**Pack spec v0.4.0, phantom spec v0.2.0, substrate spec v0.1.1, codec registry v0.5.0, container `0.4` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
+minor bump MAY break, and `0.4` does: a pack stores channels and no tissue value (`per_comp` and the bound pool's relaxation
+times leave the metadata; the embedded substrate specification defines the compartment ids). `0.3` removes a channel. `0.2.0` adds two OPTIONAL, backward-compatible
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
 plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
-implementation (dmipy-sim, private for now) emits `rpk_schema_version = "0.3"`.
+implementation (dmipy-sim, private for now) emits `rpk_schema_version = "0.4"`.
 
 Intended trajectory: this spec is deposited (Zenodo) to **fix the format's definition and
 date**; reference tooling and example substrates open thereafter.

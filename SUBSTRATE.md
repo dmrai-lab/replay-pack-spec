@@ -1,7 +1,7 @@
 # The Substrate Specification (`.sub.json`)
 
 *Companion to the Replay Pack Specification (`SPEC.md`) and the Replay Phantom Specification (`RPH.md`).
-Draft `0.1.0` for comment; nothing is numbered `1.0` before publication.*
+Draft `0.1.1` for comment; nothing is numbered `1.0` before publication. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
 
@@ -83,7 +83,7 @@ An array; `pools[i].id == i` and `pools[0].name == "extra"` (or `"free"`). Each 
 | `D` | number or null | free diffusivity in the pool (m²/s); `0` for a stuck pool; `null` means the diffusivity the walk is driven with (an analytic geometry that carries none) |
 | `T2`, `T1` | number or null | **nominal** relaxation times (s); replay knobs, never copied into a pack |
 | `water_fraction` | number in [0, 1] | proton density relative to free water; the seeding weight |
-| `susceptibility` | object or null | `{chi_iso, chi_aniso, director}`; `director` is `"none"` (isotropic), `"radial"` (a sheath: the local outward normal of the nearest wall) or `"file"` (a per-voxel director grid, `file`). The values are **nominal**: the field basis is derived from the pool's occupancy and director alone, and `chi_iso` / `chi_aniso` are applied at replay |
+| `susceptibility` | object or null | `{chi_iso, chi_aniso, director}`; `director` is `"none"` (isotropic), `"radial"` (a sheath: the local outward normal of the nearest wall) or `"file"` (a per-voxel director grid, `file`). The values are **nominal**: the field basis is derived from the pool's occupancy and director alone, and `chi_iso` / `chi_aniso` are applied at replay, and are `null` when the producer declares the source but not its values (an analytic sheath) |
 
 A pool with a `susceptibility` object is a **field source**; the set of field-source pools answers
 "which pools generate susceptibility fields". A substrate with no field-source pool has no Field tier.
