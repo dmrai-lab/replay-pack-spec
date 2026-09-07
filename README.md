@@ -38,6 +38,7 @@ replayer, and pooled in a public substrate bank.
 
 - **The spec:** [`SPEC.md`](SPEC.md) — the definitive, RFC-2119 document.
 - **The phantom format:** [`RPH.md`](RPH.md) — composing solved packs into a voxel grid.
+- **Substrate spec:** [`SUBSTRATE.md`](SUBSTRATE.md) — the declarative description of the substrate a walk is run on (domain and its faces, pools with bulk properties and susceptibility, walls with per-side physics, seeding, request vs realisation); the only input a conformant generator accepts, embedded in every pack. Schema: [`schema/substrate.schema.json`](schema/substrate.schema.json); examples in [`examples/substrates/`](examples/substrates/).
 - **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representations* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
 - **Metadata schema:** [`schema/rpk_metadata.schema.json`](schema/rpk_metadata.schema.json).
 - **Examples:** [`examples/`](examples/) — a standalone writer + replayer (no dependencies
@@ -84,7 +85,7 @@ intersection of its packs'.
 
 ## Status
 
-**Pack spec v0.3.0, phantom spec v0.2.0, codec registry v0.5.0, container `0.3` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
+**Pack spec v0.3.0, phantom spec v0.2.0, substrate spec v0.1.0, codec registry v0.5.0, container `0.3` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
 minor bump MAY break, and `0.3` does (it removes a channel). `0.2.0` adds two OPTIONAL, backward-compatible
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
 plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
