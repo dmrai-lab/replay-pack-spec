@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dmrai.org/schema/rph_metadata.schema.json",
+  "title": "Replay Phantom metadata (rph_schema_version 0.x)",
+  "description": "Normative schema for the metadata object under the safetensors header key 'rph'. See RPH.md.",
+  "type": "object",
+  "required": [
+    "rph_schema_version",
+    "id",
+    "grid",
+    "orientation",
+    "substrates",
+    "license",
+    "citation"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "rph_schema_version": {
+      "type": "string",
+      "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "grid": {
+      "type": "object",
+      "required": [
+        "shape",
+        "voxel_size_m",
+        "frame"
+      ],
+      "properties": {
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "voxel_size_m": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "origin_m": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "scanner coordinates of the centre of voxel (0,0,0)"
+        },
+        "isocenter_m": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "where the scanner is focused; default the grid centre"
+        },
+        "frame": {
+          "type": "string",
+          "description": "scanner axes the grid indices run along, e.g. RAS"
+        }
+      }
+    },
+    "orientation": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "peaks",
+            "odf_sh"
+          ]
+        },
+        "max_peaks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "lmax": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "real"
+          ]
+        },
+        "convention": {
+          "type": "string",
+          "enum": [
+            "orthonormal"
+          ]
+        }
+      }
+    },
+    "substrates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "m0"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pack",
+              "analytic",
+              "inert"
+            ]
+          },
+          "m0": {
+            "type": "number",
+            "minimum": 0
+          },
+          "embedded": {
+            "type": "boolean"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "pack_meta": {
+            "type": "object"
+          },
+          "tissue": {
+            "type": "object",
+            "description": "knobs of the pack's replay this substrate replays at (RPH 3.2)",
+            "additionalProperties": true
+          },
+          "model": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "scalars": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "kappa_B1",
+          "delta_B0_T",
+          "m0_scale"
+        ]
+      },
+      "description": "the registry of RPH 5.1; a replayer refuses an unknown name"
+    },
+    "license": {
+      "type": "string"
+    },
+    "citation": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
+    }
+  }
+}

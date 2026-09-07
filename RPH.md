@@ -1,7 +1,7 @@
 # The Replay Phantom Specification (`.rph`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.2.0 (draft).
+**Version:** 0.3.0 (draft). `0.3.0` places the grid in the scanner (`grid.origin_m`, `grid.isocenter_m`, the meaning of `frame`), turns `scalars` into a registry of **macroscopic layers** with stated replay semantics (§5.1), lets a phantom declare the tissue values a pack substrate replays at (§3.2), and fixes the conformance rule to what §3 always said: fractions sum to **one**. `0.2.0` added the ODF mode and the analytic substrate.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 A **replay phantom** is a spatial arrangement of solved substrates -- an assembly of replay
@@ -124,6 +124,16 @@ geometry and silently omit the dominant effect it has. Representing air needs a 
 `B0` field map over the grid, which is an assembly property in the sense of SPEC §14 and is not
 in this version.
 
+### 3.2 What a pack substrate replays at
+
+A pack carries the substrate specification it was walked from (`RPK.md` §10) and no tissue value; the values a
+replay applies are knobs. A phantom fixes them per substrate: `substrates[i].tissue`, when present, is an
+object of the knobs of a pack's replay -- per-pool `T2` / `T1` (s), the wall relaxivity `rho` (m/s), the field
+source's `chi_iso` / `chi_aniso` -- and MUST be applied by the replayer to that substrate; a knob not listed
+takes the pack's **nominal** value (the embedded specification's declared value, its `nominal_field_T` as
+`B0` when the replay gives none). The override is part of the phantom's declaration and travels with the
+file: the same phantom replays the same way everywhere.
+
 ## 4. Orientation: peaks or an ODF
 
 Exactly one orientation mode is declared per phantom.
@@ -137,9 +147,13 @@ microstructure -- or different substrates.
 **ODF** (`odf_sh`) gives each slot an orientation distribution in the even-order real spherical
 harmonic basis, for dispersion, fanning, and anything a discrete peak set cannot express.
 
+In peaks mode a slot's `geometric_fraction` is the weight of that peak, so a voxel with two populations of
+one substrate is two slots citing the same substrate with two directions and two fractions.
+
 The two are not separate physics. A peak is the zero-dispersion limit of an ODF, and a
 conformant replayer MUST produce the same signal from a peak set as from ODFs concentrated on
-those directions with the same weights, to within the SH truncation. Peaks are stored
+those directions with the same weights, to within the SH truncation -- an acceptance test a
+replayer MUST pass, not a remark. Peaks are stored
 separately because evaluating the response at a direction is exact and cheaper than contracting
 a near-singular ODF, not because they mean something different.
 
@@ -185,6 +199,25 @@ silently asserts they do not. It is a property of the substrate as used here, so
 the substrate rather than in a per-voxel array; genuine spatial variation of proton density
 within one tissue belongs in `scalars`.
 
+### 5.1 Macroscopic layers: the `scalars` registry
+
+The packs carry the microstructure. What a scanner adds on top of it varies over centimetres, not microns,
+and is a property of the voxel, not of the substrate: a transmit field, a macroscopic off-resonance, a
+proton-density gradient. These are **per-voxel scalars**, `scalars[v, s]`, named in `metadata.scalars`,
+each name in the registry below with its meaning in the replay. A replayer MUST refuse a name it does not
+know rather than ignore it: a layer that is silently dropped is a phantom that replays wrong while looking
+right. Layers are added to a phantom one at a time; a phantom that declares none composes exactly per §6.
+
+| name | unit | meaning | how it enters the replay |
+|---|---|---|---|
+| `kappa_B1` | – | transmit (B1+) scale at the voxel, 1 = nominal | multiplies every RF flip angle of the acquisition; needs the RF-aware (vector-Bloch) replay of each cited pack at the slot's pose, so it applies in peaks mode and to a magnitude-only gradient replay it MUST be refused, not dropped |
+| `delta_B0_T` | T | macroscopic off-resonance at the voxel (a field map value), relative to the nominal `B0` | a uniform precession `gamma * delta_B0_T` over the voxel: a phase `gamma delta_B0_T int s(t) dt` with `s` the acquisition's coherence gate (zero for a spin echo whose 180 sits at TE/2); it does not dephase within the voxel -- the intra-voxel gradient of a field map is an acquisition-side term and is not this layer |
+| `m0_scale` | – | proton-density variation within one tissue, 1 = the substrate's `m0` | multiplies `m0` of every slot of the voxel |
+
+A layer that needs the field of *neighbouring* voxels -- an air or bone interface, a susceptibility step at a
+tissue boundary -- is not a per-voxel scalar; it is an assembly property (`RPK.md` §14) and is out of this
+version, exactly as §3.1 says of air.
+
 ## 6. Replay operation
 
 For voxel `v` and acquisition `q`, with `E_i` the response of substrate `i` and `F_{v,p}` the
@@ -213,23 +246,33 @@ JSON under the safetensors header key **`"rph"`**:
 {
   "rph_schema_version": "0.2.0",
   "id": "phantoms/brain/hcp-like-1mm",
-  "grid": {"shape": [180, 216, 180], "voxel_size_m": [1e-3, 1e-3, 1e-3], "frame": "RAS"},
+  "grid": {"shape": [180, 216, 180], "voxel_size_m": [1e-3, 1e-3, 1e-3],
+           "origin_m": [-0.0895, -0.1075, -0.0895],       // scanner coordinates of the CENTRE of voxel (0,0,0)
+           "isocenter_m": [0.0, 0.0, 0.0],                 // where the scanner is focused (default: the grid centre)
+           "frame": "RAS"},                                // grid axes in the scanner: i -> +x (R), j -> +y (A), k -> +z (S)
   "orientation": {"mode": "peaks", "max_peaks": 3},   // or {"mode": "odf_sh", "lmax": 8,
                                                       //      "basis": "real",
                                                       //      "convention": "orthonormal"}
   "substrates": [
     {"id": "canonical/wm/g070-f055", "kind": "pack", "m0": 0.70, "embedded": true,
-     "sha256": "…", "pack_meta": {…}},                // arrays under substrate0/
+     "sha256": "…", "pack_meta": {…},                 // arrays under substrate0/
+     "tissue": {"T2": [0.055, 0.05, 0.01], "chi_iso": -0.1e-6}},   // OPTIONAL knobs this substrate replays at (§3.2)
     {"id": "canonical/gm/…", "kind": "pack", "m0": 0.85, "embedded": true,
      "sha256": "…", "pack_meta": {…}},
     {"id": "csf/free-water",   "kind": "analytic", "m0": 1.00,
      "model": "free_water", "params": {"diffusivity": 3.0e-9}},
     {"id": "background/inert", "kind": "inert", "m0": 0.00}
   ],
-  "scalars": ["kappa_B1"],
+  "scalars": ["kappa_B1"],                              // names from the registry of §5.1, columns of `scalars`
   "license": "…", "citation": "…", "provenance": {…}
 }
 ```
+
+`grid.frame` names the scanner axes the grid indices run along; the acquisition's gradient directions and
+`B0` direction are given in the scanner frame and a replayer rotates them into each slot's orientation through
+it. `origin_m` and `isocenter_m` are what make a macroscopic layer a function of position in the bore; a
+replayer MUST default a missing `isocenter_m` to the grid centre and MUST NOT default a missing `origin_m`
+when any layer is declared.
 
 In ODF mode `orientation.convention` MUST be `orthonormal`. The composition goes through the
 spherical-harmonic addition theorem, which is false for the non-orthonormal real conventions in
@@ -239,11 +282,12 @@ common use, and the error it introduces vanishes exactly when the gradient is pa
 ## 8. Conformance
 
 A file is a conformant `.rph` when it is a safetensors container carrying the arrays of §3 and
-the metadata of §7; every `substrate_id` resolves; `geometric_fraction` rows sum to at most
-one; every substrate declares `m0` and `sha256`; embedded substrates carry their arrays under
+the metadata of §7; every `substrate_id` resolves; `geometric_fraction` rows sum to **one**
+(§3); every declared scalar is in the registry of §5.1; every substrate declares `m0` and `sha256`; embedded substrates carry their arrays under
 `substrate{i}/` and their `pack_meta`; and, in ODF mode, `odf_sh` is in the declared orthonormal
 basis.
 
 A conformant replayer resolves or reads every cited substrate, refuses (never guesses) one it
-cannot, composes per §6 over both axes where susceptibility is present, and reports the
-phantom's tier as the intersection of its substrates' tiers.
+cannot, composes per §6 over both axes where susceptibility is present, applies every declared layer as
+§5.1 states or refuses the acquisition that cannot carry it, applies `substrates[i].tissue` where given, and
+reports the phantom's tier as the intersection of its substrates' tiers.
