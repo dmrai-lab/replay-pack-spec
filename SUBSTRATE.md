@@ -1,7 +1,7 @@
 # The Substrate Specification (`.sub.json`)
 
 *Companion to the Replay Pack Specification (`SPEC.md`) and the Replay Phantom Specification (`RPH.md`).
-Draft `0.1.1` for comment; nothing is numbered `1.0` before publication. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
+Draft `0.2.0` for comment; nothing is numbered `1.0` before publication. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
 
@@ -102,12 +102,16 @@ An array. Each wall:
 | `surface_relaxivity` | `{inside, outside}` | ρ₂ (m/s) seen from each side |
 | `mt_reactivity` | `{inside, outside}` | κ_MT (m/s) per side, `0` off |
 
-`surface.kind` is one of `sphere`, `cylinder`, `ellipsoid`, `plane`, `swept_polyline`, `mesh`, with:
+`surface.kind` is one of `sphere`, `cylinder`, `ellipsoid`, `plane`, `swept_polyline`, `sphere_union`, `mesh`, with:
 
 - `sphere`: `center[3]`, `radius`; `cylinder`: `center[3]`, `axis[3]`, `radius` (infinite along `axis`
   unless `length` is given); `ellipsoid`: `center[3]`, `semiaxes[3]`, `rotation[3][3]` optional;
   `plane`: `point[3]`, `normal[3]` (inside = the half-space the normal points away from);
-  `swept_polyline`: `centerline[n][3]`, `radius` (a sphere-swept polyline); `mesh`: `file`,
+  `swept_polyline`: `centerline[n][3]`, `radius` (a sphere-swept polyline); `sphere_union`: the outer
+  boundary of a union of overlapping spheres (a sphere-grown cell: CATERPillar), inline as
+  `instances.centers[n][3]` + `instances.radii[n]`, or as a table `file` with `format: caterpillar`,
+  `scale`, `sha256`, `column` (`inner_radius` | `outer_radius`: which radius the surface is) and
+  `cell_type` (`axon` | `glial_cell` | `blood_vessel`: which rows); `mesh`: `file`,
   `format` (`ply`, `obj`, `stl`), `scale` (file units → metres), `sha256`.
 - `instances` (optional): arrays of per-instance parameters (`centers`, `radii`, …) so a packing of
   `N` identical-role objects is **one** wall entry with `N` instances sharing pools and properties;
