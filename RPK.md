@@ -187,11 +187,19 @@ The operations split by their dependence on position: the gradient phase (§6.1)
 
 ### 6.1 Gradient phase (Gradient tier — always available)
 
-For a gradient waveform `G(t_k)` (T·m⁻¹, resampled to the save grid) the accumulated phase of walker `i` is
+The stored walk is the saves `r_i(t_k)`; the path between them is the piecewise-linear interpolant (the
+conditional mean of a Brownian path given its samples). For a gradient waveform `G(t)` (T·m⁻¹), sample-and-hold
+on **its own** grid, the accumulated phase of walker `i` is the exact integral
 
 ```
-φ_i = γ · Δt · Σ_k G(t_k) · r_i(t_k)
+φ_i = γ ∫₀ᵀ G(t) · r_i(t) dt  =  γ · Δt · Σ_k Ĝ_k · r_i(t_k),
 ```
+
+where the per-save weights `Ĝ_k` are the waveform's zeroth and first moments over the save intervals
+(`Ĝ_k Δt = (A0_k − A1_k/Δt) + A1_{k−1}/Δt`, `A0_k = ∫_{t_k}^{t_{k+1}} G dt`, `A1_k = ∫_{t_k}^{t_{k+1}} G (t − t_k) dt`),
+closed form for any two grids. A replayer MUST NOT resample `G` onto the save grid: on the pack's grid the
+weights reduce to the trapezoid rule, off it an edge between two saves carries exactly its b. A waveform MUST
+NOT extend beyond `T_max` (the path ends there).
 
 and the signal is the weighted ensemble mean
 
@@ -199,7 +207,7 @@ and the signal is the weighted ensemble mean
 S(G) = Σ_i w_i · e^{i φ_i} / Σ_i w_i .
 ```
 
-This yields any b-value, any b-tensor, OGSE/PGSE/arbitrary `G(t)` **resolvable on the `Δt` grid** (Nyquist; the resolution limit of §3), and (by sweeping `q`) the ensemble average propagator. **No stored quantity depends on `G`** — this is the whole point.
+This yields any b-value, any b-tensor, OGSE/PGSE/arbitrary `G(t)` whose spectrum the retained modes carry (the band limit of §9.4; the save grid itself is not a resolution limit of the acquisition), and (by sweeping `q`) the ensemble average propagator. **No stored quantity depends on `G`** — this is the whole point.
 
 ### 6.2 Bulk relaxation `T2`/`T1` (Bulk-relaxation tier)
 
