@@ -83,7 +83,9 @@
           "type": "string",
           "enum": [
             "peaks",
-            "odf_sh"
+            "odf_sh",
+            "frames",
+            "bingham"
           ]
         },
         "max_peaks": {

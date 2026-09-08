@@ -1,7 +1,7 @@
 # The Replay Phantom Specification (`.rph`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.3.0 (draft). `0.3.0` places the grid in the scanner (`grid.origin_m`, `grid.isocenter_m`, the meaning of `frame`), turns `scalars` into a registry of **macroscopic layers** with stated replay semantics (§5.1), lets a phantom declare the tissue values a pack substrate replays at (§3.2), and fixes the conformance rule to what §3 always said: fractions sum to **one**. `0.2.0` added the ODF mode and the analytic substrate.
+**Version:** 0.4.0 (draft). `0.4.0` says what a pose is -- a **rotation**, not an axis -- and adds the two modes that follow from it: `frames`, a rotation per slot, and `bingham`, a frame with two concentrations, so an anisotropically dispersed population (a fan) is expressible. `0.3.0` places the grid in the scanner (`grid.origin_m`, `grid.isocenter_m`, the meaning of `frame`), turns `scalars` into a registry of **macroscopic layers** with stated replay semantics (§5.1), lets a phantom declare the tissue values a pack substrate replays at (§3.2), and fixes the conformance rule to what §3 always said: fractions sum to **one**. `0.2.0` added the ODF mode and the analytic substrate.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 A **replay phantom** is a spatial arrangement of solved substrates -- an assembly of replay
@@ -62,8 +62,11 @@ only what it occupies.
 | `voxel_index` | `(N_v, 3)` | int32 | voxel coordinates on the grid |
 | `substrate_id` | `(N_v, P)` | int16 | index into `substrates` (§5); `-1` marks an unused slot |
 | `geometric_fraction` | `(N_v, P)` | float32 | fraction of the voxel volume occupied by that substrate |
-| `peak_dir` | `(N_v, P, 3)` | float32 | *peaks mode*: unit orientation of each slot |
-| `odf_sh` | `(N_v, P, n_c)` | float32 | *ODF mode*: orientation distribution, even-order real SH |
+| `peak_dir` | `(N_v, P, 3)` | float32 | *peaks mode*: unit direction of each slot, its azimuth unstated |
+| `odf_sh` | `(N_v, P, n_c)` | float32 | *ODF mode*: distribution over directions, even-order real SH |
+| `pose_quat` | `(N_v, P, 4)` | float32 | *frames / bingham mode*: the slot's rotation, `(x, y, z, w)`, unit |
+| `bingham_kappa` | `(N_v, P, 2)` | float32 | *bingham mode*: concentrations about the frame's first two axes |
+| `roll_kappa` | `(N_v, P)` | float32 | *bingham mode*, OPTIONAL: concentration of the azimuth about the frame |
 | `scalars` | `(N_v, S)` | float32 | OPTIONAL per-voxel scalars, named in metadata |
 
 `P` is the number of slots per voxel. A voxel using fewer pads with `substrate_id = -1` and
@@ -134,28 +137,44 @@ takes the pack's **nominal** value (the embedded specification's declared value,
 `B0` when the replay gives none). The override is part of the phantom's declaration and travels with the
 file: the same phantom replays the same way everywhere.
 
-## 4. Orientation: peaks or an ODF
+## 4. Orientation: a pose is a rotation
 
-Exactly one orientation mode is declared per phantom.
+Exactly one orientation mode is declared per phantom. What they have in common is the thing to state first: the
+pose of a substrate is a **rotation**, not a direction. Naming the direction a substrate points along fixes two
+of its three degrees of freedom and leaves the spin about that axis unstated, and a substrate's response depends
+on that spin unless the substrate happens to be axially symmetric -- which a finite bundle of tortuous strands
+is not, and neither is a fanned population. The four modes differ in how much of the rotation they pin down.
 
-**Peaks** (`peak_dir`) give each slot a single direction. This is the representation for
-discrete crossings: a voxel with two fibre populations is two slots with two directions, and
-`P ≤ 3` covers the crossing configurations that are resolvable in practice. The two populations
-may cite the *same* substrate at different orientations -- a pure crossing of one solved
-microstructure -- or different substrates.
+**Peaks** (`peak_dir`) give each slot a direction and leave the azimuth about it unstated. A replayer MUST then
+integrate over that azimuth rather than choose a value for it: leaving it to a convention would make the signal
+depend on a private choice of the producer's frame. This is the representation for discrete crossings -- a voxel
+with two fibre populations is two slots with two directions and two fractions -- and `P <= 3` covers the
+configurations resolvable in practice.
 
-**ODF** (`odf_sh`) gives each slot an orientation distribution in the even-order real spherical
-harmonic basis, for dispersion, fanning, and anything a discrete peak set cannot express.
+**ODF** (`odf_sh`) gives each slot a distribution over directions in the even-order real spherical harmonic
+basis, for dispersion and fanning about a mean direction, again with the azimuth unstated and integrated away.
+Peaks are the zero-dispersion limit of this mode.
 
-In peaks mode a slot's `geometric_fraction` is the weight of that peak, so a voxel with two populations of
-one substrate is two slots citing the same substrate with two directions and two fractions.
+**Frames** (`pose_quat`) give each slot a whole rotation, as a unit quaternion `(x, y, z, w)`. This is what a
+substrate whose response is not axially symmetric needs in order to be placed unambiguously, and what any
+operation acting on the magnetisation vector needs -- an RF pulse at a scaled flip angle is applied to a pose,
+not to an axis.
 
-The two are not separate physics. A peak is the zero-dispersion limit of an ODF, and a
-conformant replayer MUST produce the same signal from a peak set as from ODFs concentrated on
-those directions with the same weights, to within the SH truncation -- an acceptance test a
-replayer MUST pass, not a remark. Peaks are stored
-separately because evaluating the response at a direction is exact and cheaper than contracting
-a near-singular ODF, not because they mean something different.
+**Bingham** (`pose_quat` + `bingham_kappa`, optionally `roll_kappa`) gives each slot a frame and two
+concentrations, one about each of the frame's first two axes: a population dispersed **anisotropically**, wide
+in one plane and narrow in the other. Equal concentrations are a Watson cone of the same width, so this mode
+contains the isotropic case rather than replacing it. `roll_kappa`, when present, concentrates the substrate's
+own azimuth about the frame; absent, that azimuth is free and is integrated away as in the modes above.
+
+A conformant replayer MUST produce the same signal from a peak set as from ODFs concentrated on those
+directions with the same weights, to within the SH truncation, and the same signal from a `bingham` slot with
+equal concentrations as from the matching Watson ODF -- acceptance tests, not remarks. The modes are stored
+separately because each states exactly what it knows: evaluating a response at a pose is cheaper and more exact
+than contracting a near-singular distribution, and a mode that pins the azimuth cannot be recovered from one
+that does not.
+
+In peaks and frames mode a slot's `geometric_fraction` is the weight of that population, so a voxel with two
+populations of one substrate is two slots citing the same substrate with two poses and two fractions.
 
 ### 4.1 The spherical-harmonic basis is normative
 
@@ -253,6 +272,7 @@ JSON under the safetensors header key **`"rph"`**:
   "orientation": {"mode": "peaks", "max_peaks": 3},   // or {"mode": "odf_sh", "lmax": 8,
                                                       //      "basis": "real",
                                                       //      "convention": "orthonormal"}
+                                                      // or {"mode": "frames"} / {"mode": "bingham"}
   "substrates": [
     {"id": "canonical/wm/g070-f055", "kind": "pack", "m0": 0.70, "embedded": true,
      "sha256": "…", "pack_meta": {…},                 // arrays under substrate0/
@@ -288,6 +308,8 @@ the metadata of §7; every `substrate_id` resolves; `geometric_fraction` rows su
 basis.
 
 A conformant replayer resolves or reads every cited substrate, refuses (never guesses) one it
-cannot, composes per §6 over both axes where susceptibility is present, applies every declared layer as
-§5.1 states or refuses the acquisition that cannot carry it, applies `substrates[i].tissue` where given, and
-reports the phantom's tier as the intersection of its substrates' tiers.
+cannot, composes per §6 over both axes where susceptibility is present, integrates the azimuth away in the
+modes that leave it unstated rather than choosing a value for it (§4), reproduces a peak set from concentrated
+ODFs and a Watson from an equal-concentration `bingham`, applies every declared layer as §5.1 states or refuses
+the acquisition that cannot carry it, applies `substrates[i].tissue` where given, and reports the phantom's tier
+as the intersection of its substrates' tiers.
