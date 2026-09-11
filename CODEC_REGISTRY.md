@@ -72,6 +72,11 @@ is the band count, so the stored width is `K + 2`. A consumer that reads the wid
 as `K` will compile a waveform projection of exactly the right shape to multiply and the wrong
 thing to multiply by — it produces plausible numbers, not an error. Take `K` from the metadata.
 
+**`K` is a count; the band is a frequency.** `K` sine bands over `T_max` resolve the residual up to
+`K / (2 · T_max)` hertz (SPEC §9.4 rule 6), recorded as `compression.temporal_bandwidth_hz`. The same
+`K` on a walk twice as long is half the band; a bank compares walks and requests packs by that frequency,
+and a prefix of the walk (SPEC §3) keeps it by re-encoding at `K' = ⌈K · TE' / T_max⌉`.
+
 Three properties motivate the split, none of them a compression claim:
 
 - **The gradient moments are columns.** The phase is
