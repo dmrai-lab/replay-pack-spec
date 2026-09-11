@@ -1,7 +1,7 @@
 # The Replay Phantom Specification (`.rph`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.4.0 (draft). `0.4.0` says what a pose is -- a **rotation**, not an axis -- and adds the two modes that follow from it: `frames`, a rotation per slot, and `bingham`, a frame with two concentrations, so an anisotropically dispersed population (a fan) is expressible. `0.3.0` places the grid in the scanner (`grid.origin_m`, `grid.isocenter_m`, the meaning of `frame`), turns `scalars` into a registry of **macroscopic layers** with stated replay semantics (§5.1), lets a phantom declare the tissue values a pack substrate replays at (§3.2), and fixes the conformance rule to what §3 always said: fractions sum to **one**. `0.2.0` added the ODF mode and the analytic substrate.
+**Version:** 0.5.0 (draft). `0.5.0` adds the second route to a phantom, **partition** (§9): one walk of a substrate larger than a voxel, cut into voxels by where each walker started, with membership derived rather than stored, fractions emergent from the walkers' weights, a grid attached to the tissue or to the bore, and a rigid pose. `0.4.0` says what a pose is -- a **rotation**, not an axis -- and adds the two modes that follow from it: `frames`, a rotation per slot, and `bingham`, a frame with two concentrations, so an anisotropically dispersed population (a fan) is expressible. `0.3.0` places the grid in the scanner (`grid.origin_m`, `grid.isocenter_m`, the meaning of `frame`), turns `scalars` into a registry of **macroscopic layers** with stated replay semantics (§5.1), lets a phantom declare the tissue values a pack substrate replays at (§3.2), and fixes the conformance rule to what §3 always said: fractions sum to **one**. `0.2.0` added the ODF mode and the analytic substrate.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 A **replay phantom** is a spatial arrangement of solved substrates -- an assembly of replay
@@ -15,6 +15,14 @@ no capability tier (SPEC §7). A phantom is exactly as replayable as the packs i
 its tier is the **intersection** of theirs.
 
 ## 1. Why a phantom is its own format
+
+There are **two ways to arrive at a phantom**, and this document specifies both. **Composition** (§3-§7) places
+solved packs into voxels the producer declares: fractions, poses and proton density per voxel, on a grid that
+is the producer's. **Partition** (§9) bins the walkers of one walk of a substrate larger than a voxel into the
+voxels they started in: the grid is free, the poses are the tissue's, the fractions are measured. At the pack
+layer the two are identical -- walkers over tiers, compressed -- and walker provenance is invisible to the
+replay mechanics, so partition adds no capability tier and changes nothing in the replay invariant. Composition
+is the voxel-averaged projection of a partition; the projection is not invertible, which is why both exist.
 
 A pack answers *what does this microstructure do to the magnetization*: one substrate at one
 pose. A voxel is a distribution of poses, a volume is a field of such distributions, and both
@@ -268,7 +276,8 @@ JSON under the safetensors header key **`"rph"`**:
   "grid": {"shape": [180, 216, 180], "voxel_size_m": [1e-3, 1e-3, 1e-3],
            "origin_m": [-0.0895, -0.1075, -0.0895],       // scanner coordinates of the CENTRE of voxel (0,0,0)
            "isocenter_m": [0.0, 0.0, 0.0],                 // where the scanner is focused (default: the grid centre)
-           "frame": "RAS"},                                // grid axes in the scanner: i -> +x (R), j -> +y (A), k -> +z (S)
+           "frame": "RAS",                                 // grid axes in the scanner: i -> +x (R), j -> +y (A), k -> +z (S)
+           "attach": "substrate"},                         // what the grid is welded to under a pose (§9.2); inert for a composition
   "orientation": {"mode": "peaks", "max_peaks": 3},   // or {"mode": "odf_sh", "lmax": 8,
                                                       //      "basis": "real",
                                                       //      "convention": "orthonormal"}
@@ -313,3 +322,130 @@ modes that leave it unstated rather than choosing a value for it (§4), reproduc
 ODFs and a Watson from an equal-concentration `bingham`, applies every declared layer as §5.1 states or refuses
 the acquisition that cannot carry it, applies `substrates[i].tissue` where given, and reports the phantom's tier
 as the intersection of its substrates' tiers.
+
+A partition file (§9) is conformant when it carries the metadata of §9.4 and, for every declared slot, its
+`declared{i}/` tensors; it carries **no** `voxel_index`, `substrate_id`, `geometric_fraction` or orientation array
+for its pack slots, since a reader derives them. A conformant replayer of a partition derives membership from
+the stored `r(0)` (§9.1), verifies any membership cache against that derivation rather than trusting it, takes
+pack fractions from the weights (§9.3), applies the pose with the declared attachment (§9.2), and never applies a
+per-voxel orientation to a partitioned pack (§9.2).
+
+## 9. Partition: one walk, cut into voxels
+
+A **partitioned** phantom cites one walk of a substrate larger than a voxel -- an anatomy, a strand phantom of
+a cubic millimetre -- and assigns each walker to the voxel its **starting position** fell in. Everything
+below is an *addressing mode* on top of the pack layer: nothing new is stored per walker, no tier is added.
+
+### 9.1 Membership is derived
+
+`voxel(i) = floor((pose · r_i(0) − corner) / voxel_size)`, with `r_i(0)` the pack's stored start position
+(`RPK.md`: the position codec keeps the two endpoints exactly, so `r(0)` is a stored value and identical at
+every `K`; measured, membership changes for 0.0000 % of 20,000 walkers between `K = 16` and `K = 64`, the
+residual being float32 rounding of the coordinate), `corner` the low corner of voxel `(0, 0, 0)`
+(`origin_m − voxel_size_m / 2`), and `pose` the rotation of §9.2 when the grid is the bore's, the identity when
+it is the tissue's. A walker outside the grid belongs to no voxel. Membership MUST NOT be stored as a
+normative array; a producer MAY store a cache (`walker_voxel (N_w,) int32` per pack), and a reader MUST verify
+it against the derivation rather than trust it.
+
+Because membership is derived, **the grid is free**: the same walk yields any voxel size, any shift, any
+parcellation, without a re-walk or a re-encode -- refinement included, which a composition cannot do, having
+stored only voxel summaries.
+
+### 9.2 Rigid scope, and what the grid is attached to
+
+A partitioned anatomy is one physical object. Its voxels are artificial subdivisions of it and cannot be posed
+one by one, so orientation has **rigid scope**: one rotation, `pose.rotation` (substrate frame → scanner
+frame), for the whole phantom. Per-voxel `peak_dir` / `odf_sh` MAY be carried as *descriptive* ground truth
+(`orientation.role: "descriptive"`) and MUST NOT be applied in the replay: the trajectories already contain
+the local orientation, dispersion and crossings, and applying an orientation operator would count them twice.
+
+"Rotating the phantom" is two independent things, and `grid.attach` says which:
+
+| `grid.attach` | the grid is welded to | a pose changes |
+|---|---|---|
+| `"substrate"` | the tissue | the physics only: the acquisition is rotated into the tissue frame (`g · R r = (Rᵀ g) · r`); membership is invariant |
+| `"lab"` | the bore | the physics **and** the binning: the posed starts are rebinned, fractions re-emerge |
+
+The two coincide at the identity pose. A partition with **no grid of its own** (`grid: null`) is bore-attached
+by definition and takes its voxels from the acquisition's prescription (`ACQUISITION.md` §3.6) at replay time;
+a replayer MUST refuse an acquisition without one. `attach` is inert for a composed phantom, which never poses.
+
+Translation collapses to one degree of freedom -- only the relative offset of specimen and grid matters -- and
+is the grid's (`origin_m`); `pose` carries a rotation only.
+
+### 9.3 Fractions are emergent
+
+A pack slot of a partition declares **no** `geometric_fraction`: under a bore-attached grid and a non-identity
+pose a stored fraction is only valid at the pose it was measured at, and recomputing it needs the geometry,
+which no pack carries. Instead each walker carries its statistical weight `spin_weights` (`RPK.md` §5.2), an
+importance weight `(true volume density) / (sampling density)` of its compartment, and for voxel `v`
+
+```
+W_p(v) = sum_{i in v, pack p} w_i          f_p(v) = (1 − d(v)) · W_p(v) / sum_q W_q(v)
+```
+
+with `d(v)` the sum of the **declared** fractions of the voxel's walker-less slots (a myelin the walk excluded)
+-- the only fractions a partition states, because nothing weighs them. A voxel with no walkers is the
+**outside** substrate (`analytic` or `inert`, §3.1) at `1 − d(v)`, or is absent from the phantom when none is
+declared. Rows sum to one by construction; §3's rule becomes a check on the derived quantity.
+
+The trap this avoids is worth stating: with stratified seeding, **unweighted counts are not fractions**, and
+a phantom inferring them from counts is wrong in proportion to the stratification. With the weights, weighted
+counts *are* the fractions, at any grid and any pose.
+
+### 9.4 Metadata and tensors
+
+```jsonc
+{
+  "rph_schema_version": "0.5.0",
+  "addressing": "partition",
+  "grid": {"shape": [40, 40, 40], "voxel_size_m": [25e-6, 25e-6, 25e-6], "origin_m": [...], "isocenter_m": [0, 0, 0],
+           "frame": "RAS", "attach": "substrate"},          // or null: the voxels are the acquisition's prescription
+  "pose": {"rotation": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]},  // substrate frame -> scanner frame
+  "orientation": {"mode": "rigid", "scope": "rigid"},
+  "substrates": [
+    {"id": "disco/intra", "kind": "pack", "m0": 1.0, "addressing": "partition", "embedded": true, "sha256": "…", "pack_meta": {…}},
+    {"id": "disco/extra", "kind": "pack", "m0": 1.0, "addressing": "partition", "uri": "disco_extra.rpk", "sha256": "…"},
+    {"id": "myelin", "kind": "inert", "m0": 0.0, "declared": true},           // tensors declared2/voxel_index (N_d, 3), declared2/fraction (N_d,)
+    {"id": "csf/free-water", "kind": "analytic", "m0": 1.0, "model": "free_water", "params": {"diffusivity": 0.6e-9}, "outside": true}
+  ],
+  "license": "…", "citation": "…"
+}
+```
+
+Several pack slots citing **the same walk** (one pack per compartment, each with its weights) share every
+voxel through §9.3; a producer MUST make them one walk, since binning two independent walks into the same
+voxels is a composition wearing a partition's name.
+
+### 9.5 Replay
+
+For voxel `v`, with `E_i(q)` the complex signal of walker `i` under acquisition `q` in the tissue frame
+(the acquisition rotated by `poseᵀ`), `ew_i` its weight with the relaxation and surface terms of the tiers
+applied, and the outside and declared slots as in §6,
+
+```
+S_v(q) = sum_p m0_p f_p(v) · [ sum_{i in v, p} ew_i E_i(q) ] / W_p(v)  +  sum_{declared, outside} m0_s f_s(v) E_s(q)
+```
+
+Every pack is replayed **once** per acquisition -- the sum over walkers is regrouped by voxel, not recomputed
+-- so the cost is the walk, not the voxel count. A macroscopic layer given per voxel (§5.1) is looked up
+through membership and applied **per walker**: a transmit scale becomes a per-walker `B1+` scale through one
+propagation of the whole walk. A walker's signal is attributed to the voxel it **started** in, not the one it
+is in at the readout; walkers leave their voxel, and that is what makes the slicing exact.
+
+### 9.6 The two routes agree, and where they part
+
+A partition and its composition projection -- the fractions measured per voxel, an orientation distribution
+fitted per voxel, one pack per tissue cited at it -- MUST agree at the grid the projection was taken on, to
+within the packs' Monte-Carlo floor. They part wherever a sub-voxel or grid-changing question is asked:
+
+| operation | composition | partition |
+|---|---|---|
+| coarsen the grid | merge slots; refit once `P` binds | exact rebin |
+| refine the grid | impossible | exact rebin |
+| shift the grid | resampling | exact rebin |
+| rigid rotation, bore-attached grid | resampling | exact: rotate `r(0)`, rebin |
+| reuse one pack across many voxels and poses | yes -- the whole-brain economy | no: the anatomy must be walked |
+
+The last row is why composition is not merely a lossy partition, and why both routes are in this document.
+
