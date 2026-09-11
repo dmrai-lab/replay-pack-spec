@@ -1,7 +1,7 @@
 # The Acquisition Specification (`ScannerSequence`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.1.0 (draft for comment). Nothing is numbered `1.0` before publication.
+**Version:** 0.2.0 (draft for comment). Nothing is numbered `1.0` before publication.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 *Companion to the Replay Pack Specification ([`RPK.md`](RPK.md)), the Replay Phantom Specification
@@ -102,6 +102,7 @@ of them and MUST NOT be stored alongside (a stored copy can disagree with its so
 | `crusher` | crusher (§3.5) or null | -- | the emergent voxel-scale crusher the vector-Bloch route models |
 | `family` | string | -- | the family name (§6.3), `"waveform"` for an arbitrary played gradient |
 | `build_spec` | `(name, kwargs)` or null | -- | provenance: the builder and its arguments; rebuilding reproduces `G` |
+| `prescription` | prescription (§3.6) or null | -- | where in the bore and on what voxels the acquisition images; nothing is derived from it |
 
 `n_meas ≥ 1`; `n_t ≥ 2`. A measurement is one row of `G`: one direction and amplitude of the same
 sequence. **One acquisition has one RF schedule and one echo time**; a scheme with several echo times is a
@@ -168,6 +169,26 @@ restates, it never overrides.
 The emergent voxel-scale crusher of the vector-Bloch route: `{windows_s: [(t0, t1), ...], n_cycles}` -- a
 dephasing across the voxel of `n_cycles` full cycles applied over each window, so the transverse
 magnetisation that was not stored along z is destroyed there. Only the vector-Bloch route reads it.
+
+### 3.6 The prescription
+
+The acquisition in **space**, as the rest of the object is the acquisition in **time**:
+
+```jsonc
+{"isocenter_m": [0, 0, 0],            // the point the scanner is focused on
+ "axes": "RAS",                       // the scanner direction each voxel index runs along (i -> +x, j -> +y, k -> +z)
+ "voxel_size_m": [1.5e-3, 1.5e-3, 1.5e-3],
+ "matrix": [40, 40, 1],
+ "origin_m": [-0.02925, -0.02925, 0]} // scanner coordinate of the CENTRE of voxel (0, 0, 0); default: the FOV centred on the isocenter
+```
+
+It is OPTIONAL and **derives nothing**: `G`, the schedule, the b-value and the echo are the same with or
+without it (§5.7 holds). What it fixes is the frame of §4.1 -- the gradient and B0 directions are given along
+`axes` -- and the voxels: a consumer that bins a sample into voxels (a partitioned replay phantom whose grid is
+attached to the bore, `RPH.md`) MUST use this prescription when the phantom declares no grid of its own, and a
+consumer holding its own grid MUST refuse an acquisition prescribed on other `axes` rather than rotate either.
+A Pulseq export carries it as the file's `FOV` definition (`matrix · voxel_size_m`) plus the full object under
+`dmipy_prescription`; an import without either has no prescription.
 
 ---
 
