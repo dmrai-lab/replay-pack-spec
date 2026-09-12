@@ -125,6 +125,20 @@ with response `E = exp(-b D)`, independent of gradient direction and of `B0`. A 
 refuse an analytic `model` it does not recognise rather than guessing, exactly as SPEC §9
 requires for codecs. Further models are additions to this table, not changes to the format.
 
+**Namespaced models.** A `model` of the form `"<package>:<Name>"` is a closed form another package
+defines (a compartment model of dmipy-fit: `"dmipy_fit:C1Stick"`, parameters by the model's own names
+and units under `params`). A reader resolves it by importing `<package>.phantom` and calling its
+`analytic_substrate(entry)`; without that package it MUST refuse, naming the package, never guess.
+
+**A closed form with an axis takes a pose.** An analytic entry that carries `"oriented": true` has an
+axis (a stick, a cylinder) and is composed exactly as a pack is (§6): its response at a pose -- the
+form evaluated with its axis along the third column of the pose -- is expanded over SO(3) and contracted
+with the voxel's orientation distribution, so it MUST have an orientation field like a pack and MUST NOT
+disperse itself (a model that carries its own dispersion is not citable: the phantom's field would
+disperse it twice). An entry without the flag (free water) is isotropic and MUST NOT be given one.
+A closed form has no field term and no magnetisation of its own: with a field or a transmit scale asked
+of the phantom, a replayer states once per such substrate that it contributes at its closed form.
+
 **`inert` is not air.** It is defined by contributing nothing, which is a modelling statement,
 not a material. Air is the opposite of inert magnetically: the air--tissue susceptibility step
 is of order 9 ppm, roughly two orders of magnitude larger than the sub-ppm anisotropy the packs
