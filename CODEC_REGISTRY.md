@@ -75,7 +75,8 @@ thing to multiply by — it produces plausible numbers, not an error. Take `K` f
 **`K` is a count; the band is a frequency.** `K` sine bands over `T_max` resolve the residual up to
 `K / (2 · T_max)` hertz (SPEC §9.4 rule 6), recorded as `compression.temporal_bandwidth_hz`. The same
 `K` on a walk twice as long is half the band; a bank compares walks and requests packs by that frequency,
-and a prefix of the walk (SPEC §3) keeps it by re-encoding at `K' = ⌈K · TE' / T_max⌉`.
+and a prefix of the walk (SPEC §3) keeps it by re-encoding at `K' = ⌈K · TE' / T_max⌉` or more --
+the certificate, not the ratio, fixes `K'`.
 
 Three properties motivate the split, none of them a compression claim:
 
