@@ -108,7 +108,12 @@ An array. Each wall:
 - `sphere`: `center[3]`, `radius`; `cylinder`: `center[3]`, `axis[3]`, `radius` (infinite along `axis`
   unless `length` is given); `ellipsoid`: `center[3]`, `semiaxes[3]`, `rotation[3][3]` optional;
   `plane`: `point[3]`, `normal[3]` (inside = the half-space the normal points away from);
-  `swept_polyline`: `centerline[n][3]`, `radius` (a sphere-swept polyline); `sphere_union`: the outer
+  `swept_polyline`: `centerline[n][3]`, `radius` (a sphere-swept polyline), or per instance as
+  `instances.centerlines[n][m][3]` + `instances.radii[n]`, or the centerlines as a `file` with
+  `format: tck` (an MRtrix track file; `scale` its coordinate unit in metres, `sha256`) and the radii
+  inline as `instances.radii[n]`, or `format: strands` (an EPFL strand list carrying its own radii;
+  `scale`, `sha256`) — a dataset of thousands of strands is cited, not copied, into every pack that
+  embeds its spec; `sphere_union`: the outer
   boundary of a union of overlapping spheres (a sphere-grown cell: CATERPillar), inline as
   `instances.centers[n][3]` + `instances.radii[n]`, or as a table `file` with `format: caterpillar`,
   `scale`, `sha256`, `column` (`inner_radius` | `outer_radius`: which radius the surface is) and
