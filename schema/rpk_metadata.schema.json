@@ -54,10 +54,22 @@
         "method": {
           "type": "string",
           "description": "Codec name. 'identity' = raw. Walker-preserving codecs required alongside per-walker channels.",
-          "examples": ["identity", "temporal_dct", "lowrank", "gaussian", "marginal"]
+          "examples": ["identity", "bridge_dst"]
         },
         "K": {"type": ["integer", "null"], "description": "Codec rank/modes, if applicable."},
-        "walker_preserving": {"type": "boolean"}
+        "walker_preserving": {"type": "boolean"},
+        "container": {
+          "type": ["array", "null"],
+          "description": "The integer band container of the position bridge (registry 0.6): the band ranges covering 0..K-1, each {bands: [k0, k1], bits: 16 or 8}. null / absent: the float32 container (pos_x, pos_y, pos_z).",
+          "items": {
+            "type": "object",
+            "required": ["bands", "bits"],
+            "properties": {
+              "bands": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+              "bits": {"type": "integer", "enum": [8, 16]}
+            }
+          }
+        }
       }
     },
     "replay_envelope": {
