@@ -170,7 +170,7 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 ### 5.3 Channel invariants
 
 - Every per-walker/per-save channel MUST share `N_w` and `N_t` with `positions`.
-- `compartment` MUST carry the exclusive `comp` column; its id `0` MUST denote the extra-cellular/free pool and the other ids are the pool ids of the embedded `substrate` specification (§10) when the pack carries one, and MUST otherwise be described in `provenance`. Every column MUST share `N_t`.
+- `compartment` MUST carry the exclusive `comp` column; its id `0` MUST denote the extra-cellular/free pool and the other ids are the pool ids of the embedded `substrate`. A `comp` column whose every walker keeps one label over the walk MAY be stored as one label per walker (the registry's `static` kind), and a replayer MUST treat it as that walker's occupancy at every save specification (§10) when the pack carries one, and MUST otherwise be described in `provenance`. Every column MUST share `N_t`.
 - At each save the occupancy over all declared pools sums to 1. Columns are the **compact encoding of that joint simplex**, not independent quantities: with a bound occupancy `b` and geometric label `g`, the pool occupancies are `f_bound = b` and `f_g = (1 − b)·[comp = g]`. Replay weights the per-pool rates by them, `R(t) = Σ_c f_c(t) R_c` — which is what makes an integer label (one-hot), a permeable crossing (a fraction on the geometric axis), and MT binding (a fraction on an independent axis) the same object.
 - The `bound` column MUST lie in `[0, 1]`, and at `k = 0` it MUST be the equilibrium occupancy (the walk is pre-burned-in; §8.8).
 - `boundary_local_time` MUST be non-negative and expressed in the `ρ/D = 1` normalization of §6.3.
@@ -403,6 +403,8 @@ So raw is exact to the grid, a full basis matches raw, and a truncated basis tra
 ### 9.3 Storage codecs
 
 The non-position channels (`compartment`, `boundary_local_time`, …) use per-channel **storage codecs** — run-length, quantization, sparse/dense — matched to each channel's structure. These are pure storage: they decode to the §5 array and do not change replay cost.
+
+A storage codec MAY offer more than one **container** for the same coefficients — for the bridge form, the float32 tensor per axis or an integer band container with a per-band scale (registry 0.6). A container is a choice of bytes, not of meaning: the decoded channel and every replay contraction are the same to the container's quantisation, the pack's fidelity certificate (§10) is computed through the container it is written in, and a reader that meets a container it does not implement MUST refuse the pack rather than read its tensors under another layout.
 
 ### 9.4 Interface rules
 
