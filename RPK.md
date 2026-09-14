@@ -418,6 +418,8 @@ A conformant representation or codec MUST satisfy six rules:
 
 6. **A temporal band is a frequency.** A codec that stores a channel as `K` temporal modes over the walk's `T_max` resolves that channel up to `K / (2 · T_max)` hertz, and it is that frequency -- not the count `K`, whose meaning changes with every walk length -- that a scanner envelope is compared against and that a prefix (§3) preserves. Such a codec SHOULD record it as `compression.temporal_bandwidth_hz = K / (2 · T_max)` (§10) -- a reader derives the same number from `K` and `T_max` when it is absent -- and a bank SHOULD request a pack by bands per second. The frequency is the codec's **reach**: a gradient waveform whose spectrum lies below it is inside the retained span. It is not the accuracy for a given waveform -- that is the product of the waveform's out-of-band spectrum with the channel's residual (the walk's own spectrum falls only as `1/m` in mode index), and remains the business of the `fidelity` certificate (rule 4) and of a consumer's per-waveform check.
 
+   **Inherited certification.** Packs that are blocks of one *fill* -- the same substrate, walk parameters, save grid, codec and containers, differing only in the walkers they hold -- MAY inherit the battery measurement instead of repeating it: one or more **certifying** packs of the fill carry the measured `fidelity` (`certified: "measured"`); every other pack carries `certified: "inherited"` and `inherited_from {id, err_max, floor_max}` naming a certifying pack, reports that pack's `err_max` (whole and per family and per tier), and reads its **own** split-half `floor_max` -- and, when partitioned, its own per-voxel floors -- over the same battery in the coded domain (the phases from the stored coefficients, no path decoded). A pack whose codec parameters differ from the pack it cites is non-conformant; a pack that inherited a certificate cannot certify another; a bank MAY re-measure any pack.
+
 The `fidelity` object is **codec-agnostic** — it reports the decoded-vs-raw replay error whatever method produced it — so it lives in the **core** metadata (§10) and is read identically by any replayer or bank; only the codec *algorithms* live in the registry. How to read it: `err_max` is the worst-case replay error over the battery, `floor_max` the irreducible MC noise floor for the same ensemble, and `within_2x_floor: true` means the loss sits below `2×` that floor (scientifically negligible).
 
 One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
@@ -482,7 +484,9 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "err_max": 0.0015,                   // worst decoded-vs-raw replay error over `battery`
     "floor_max": 0.0074,                 // irreducible MC noise floor (same ensemble)
     "within_2x_floor": true,             // err_max <= 2*floor_max -> loss is negligible
-    "battery": "..." },
+    "battery": "...",
+    "certified": "measured",             // "measured" here, or "inherited" from a certifying pack of the same fill
+    "inherited_from": null },            //   then {id, err_max, floor_max} of that pack (§9.4 rule 4)
   "mt": {                                // REQUIRED iff C4 parametric two-pool (§6.5.1); else absent
     "model": "two_pool",                 //   fixed-at-walk-time pool descriptor (not knobs)
     "f_bound": 0.081, "k_forward": 88.3, //   dimensionless, s^-1  (from S/V, kappa, dwell)

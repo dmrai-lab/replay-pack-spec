@@ -104,7 +104,10 @@
         "err_max": {"type": "number", "minimum": 0, "description": "Worst-case decoded-vs-raw replay error over `battery`."},
         "floor_max": {"type": "number", "minimum": 0, "description": "Irreducible split-half MC noise floor for the same ensemble."},
         "within_2x_floor": {"type": "boolean", "description": "err_max <= 2*floor_max, i.e. the loss is below the MC noise (scientifically negligible)."},
-        "battery": {"type": "string", "description": "The acquisition set over which err_max/floor_max were measured."}
+        "battery": {"type": "string", "description": "The acquisition set over which err_max/floor_max were measured."},
+        "certified": {"type": "string", "enum": ["measured", "inherited"], "description": "Whether this pack measured its battery, or inherited the codec error from a certifying pack of the same fill and measured only its own floor (SPEC §9.4 rule 4)."},
+        "inherited_from": {"type": ["object", "null"], "description": "The certifying pack, when `certified` is `inherited`.",
+          "properties": {"id": {"type": "string"}, "err_max": {"type": "number", "minimum": 0}, "floor_max": {"type": "number", "minimum": 0}}}
       }
     },
     "mt": {
