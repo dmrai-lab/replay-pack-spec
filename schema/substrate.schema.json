@@ -66,7 +66,7 @@
               "semiaxes": {"$ref": "#/$defs/vec3"}, "rotation": {"type": "array"},
               "point": {"$ref": "#/$defs/vec3"}, "normal": {"$ref": "#/$defs/vec3"},
               "centerline": {"type": "array", "items": {"$ref": "#/$defs/vec3"}},
-              "file": {"type": "string"}, "format": {"type": "string", "enum": ["ply", "obj", "stl", "caterpillar"]},
+              "file": {"type": "string"}, "format": {"type": "string", "enum": ["ply", "obj", "stl", "caterpillar", "tck", "strands"]},
               "column": {"type": "string", "enum": ["inner_radius", "outer_radius"]},
               "cell_type": {"type": "string", "enum": ["axon", "glial_cell", "blood_vessel"]},
               "scale": {"type": "number", "exclusiveMinimum": 0}, "sha256": {"type": "string"},
