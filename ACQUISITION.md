@@ -276,6 +276,14 @@ echo, the refocusing residual (§4.6) MUST be `≤ 10⁻³`. A reference builder
 (`≤ 10⁻⁹`) by construction: a spin echo plays the **same block** on both sides of its 180, so `G_eff` is
 `B, −B` sample for sample.
 
+A **split-echo** family reads two echoes per refocusing interval: a prolonged, unbalanced readout lobe
+rephases one coherence family early and the other late, and the two are magnitude-combined. Neither is
+refocused on its own — that is what separates them — so for such a family the residual is evaluated at the
+**midpoint of each pair**, which is where the schedule forms its echo, and MUST be `≤ 10⁻³` there. The pair
+MUST straddle its own echo, and the readout MUST list the two in time order. The lobe is constant in the
+PHYSICAL gradient, so `G_eff` alternates it and its moment returns to zero at every echo; a lobe that
+reversed with the pulses would be constant in `G_eff` and refocus at no echo at all.
+
 ### 5.2 No gradient through a finite pulse; a hard pulse constrains nothing
 
 Every sample whose time lies in a finite pulse's window (§3.2) MUST carry zero gradient. A hard pulse
