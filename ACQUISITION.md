@@ -1,7 +1,7 @@
 # The Acquisition Specification (`ScannerSequence`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.2.0 (draft for comment). Nothing is numbered `1.0` before publication.
+**Version:** 0.2.1 (draft for comment). Nothing is numbered `1.0` before publication. `0.2.1` reconciles §8 with the catalogue it describes — the citation fields, the declared confidence levels, and the `homogeneity` group — and adds a JSON Schema for it.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 *Companion to the Replay Pack Specification ([`RPK.md`](RPK.md)), the Replay Phantom Specification
@@ -400,18 +400,36 @@ one JSON document with the sections
 
 | section | content |
 |---|---|
-| `citations` | `key → {title, url / doi, accessed}` |
-| `scanners` | per model: `vendor`, `model`, `field_T`, and the leaves `gradient.max_amplitude`, `gradient.max_slew_rate`, `gradient.gradient_raster_time`, `rf.*`, each a **cited leaf** |
+| `citations` | `source_key → {key, authors, title, journal_or_publisher, year, doi_or_url}` |
+| `scanners` | per model: `vendor`, `model`, `field_T`, an optional prose `notes`, and the groups `gradient` (`max_amplitude`, `max_slew_rate`, `gradient_raster_time`, and `max_slew_rate_diffusion` where the model derates), `rf`, and `homogeneity` (`b0_homogeneity`, `background_gradient`: what the magnet itself does to the field), each leaf a **cited leaf** |
 | `safety` | the SAR / `B1_rms` / dB/dt (PNS) limits of the standard cited, and the coefficients of a PNS model (SAFE) where published |
 | `envelopes` | declared limit points that are not a machine (a certificate's clinical / insert envelope, a Pulseq example system) |
 | `classes` | the short names of scanner classes and which model they resolve to |
 | `aliases` | short names for models |
 
-A **cited leaf** is `{value, unit, field_T, context, source_key, location, confidence}` with `confidence ∈
-{cited, inferred, assumed}`. A typed SI view (`ScannerLimits.of(name, regime)`) resolves a name through the
-aliases and classes and converts the leaves; `regime = "diffusion"` returns the PNS-derated slew where one
-is catalogued. No other module carries a scanner number. A PNS solver that reads these coefficients is a
-designer's concern and lives outside this specification.
+A **cited leaf** is `{value, unit, field_T, context, source_key, location, confidence}`, every key present,
+with `confidence` one of the levels the file declares in `_schema.confidence_levels` — `cited`,
+`widely-quoted`, `NEEDS VERIFICATION`, `derived`. `context` carries the part a bare number always loses (that
+a gradient ceiling is the *weakest* axis, that a homogeneity figure is over a stated DSV). `value` MAY be
+`null`: the catalogue does not know, and a typed view MUST return nothing rather than a stand-in number.
+
+Three referential rules hold, and a conforming catalogue is checkable against
+[`schema/scanner_catalogue.schema.json`](schema/scanner_catalogue.schema.json):
+
+1. every leaf's `source_key` resolves in `citations`;
+2. a `classes` or `aliases` value names a key of **either** `scanners` or `envelopes`;
+3. a citation MAY be referenced only from an entry's prose `notes` and never from a leaf — a source for the
+   machine rather than for one number. The converse is not permitted: a `notes` string carries no provenance
+   fields, so a number MUST NOT live there.
+
+A typed SI view (`ScannerLimits.of(name, regime)`) resolves a name through the aliases and classes and
+converts the leaves; `regime = "diffusion"` returns the PNS-derated slew where one is catalogued. No other
+module carries a scanner number. A PNS solver that reads these coefficients is a designer's concern and
+lives outside this specification.
+
+What the catalogue does **not** carry, in this version, is anything spatial: a leaf is one figure about a
+machine, never a map. `homogeneity` states that a magnet departs from uniformity and by how much over what
+volume; where in the bore it does so is not yet specified.
 
 ---
 
