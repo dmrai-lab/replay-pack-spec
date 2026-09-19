@@ -1,7 +1,7 @@
 # The Acquisition Specification (`ScannerSequence`)
 
 **Status:** draft, versioned independently of the core `.rpk` specification.
-**Version:** 0.2.1 (draft for comment). Nothing is numbered `1.0` before publication. `0.2.1` reconciles §8 with the catalogue it describes — the citation fields, the declared confidence levels, and the `homogeneity` group — and adds a JSON Schema for it.
+**Version:** 0.2.0 (draft for comment). Nothing is numbered `1.0` before publication.
 **License:** CC-BY-4.0 (text) / Apache-2.0 (reference code).
 
 *Companion to the Replay Pack Specification ([`RPK.md`](RPK.md)), the Replay Phantom Specification
