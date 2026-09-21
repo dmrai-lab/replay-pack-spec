@@ -150,6 +150,7 @@ count from `realisation`, never from `request`.
 | `smallest_feature` | number | the smallest length the walk must resolve (smallest radius, thinnest sheath); the sub-step rules divide it |
 | `min_gap` | number or null | narrowest passage between walls |
 | `mesh_edge_feature_ratio` | number or null | median edge over `smallest_feature`, meshes only |
+| `thinnest_shell` | number or null | the thickness of the thinnest shell pool (a myelin sheath), metres: a mesh pair's median wall-to-wall distance, the radii's difference otherwise; a rasterised field basis sets its node spacing from it |
 | `tiers` | string[] | subset of `gradient`, `relaxation`, `surface`, `field`, `exchange`: what a walk on this substrate CAN record |
 
 ### 3.9 `provenance`
