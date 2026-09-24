@@ -127,6 +127,8 @@ A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
 ### 4.3 Time
 The save grid is uniform with interval `Δt = dt_traj`. `N_t` and `T_max = (N_t − 1)·Δt` are recorded. The integrator's internal sub-step is a producer concern and is neither stored nor standardized.
 
+**Segments.** A pack stores its walk in **segments**: consecutive windows of one duration `T_seg` on the save grid, `n_seg` saves each, consecutive windows **sharing their boundary save** (segment `i` holds saves `i (n_seg − 1) .. i (n_seg − 1) + n_seg − 1`; `N_t = S (n_seg − 1) + 1` for `S` segments). Every pack declares the table `walk_params.segments = {n, n_t, T, walks}` (§10); a walk within one window is one segment, and a longer walk MUST be a whole number of them. Each segment is encoded, certified and readable on its own as a pack to `T_seg` starting from its own first save (its start positions are the previous segment's endpoints, held exactly by the position codec); segment 0's channels are stored under the channel keys and segment `i ≥ 1` under the key prefix **`s{i}/`** (§12), so that reading the first `k` segments is a contiguous range of the file. The channels are additive over segments: a replay over an acquisition spanning several windows is the **sum** of the replays of the acquisition restricted to each window (the gradient phase, the gated occupancy and contact, the gated field integral each split exactly at the shared save, the shared save's sampled weight split into its two half-intervals), so no channel is ever decoded across the join. A walk is **continued** by appending segments (§3, additivity in time): a producer resumes every walker from the last segment's endpoints and compartment state and appends the new windows, each with its own seed recorded in `walks`. The storage rule's default is `T_seg = 100 ms`; a pack declares its own and there is no other layout.
+
 ### 4.4 Signal and sign convention
 The canonical signal is complex, `S = ⟨w · e^{+iφ}⟩`, with phase `φ = γ ∫ G·r dt` (§6.1), a **positive** gyromagnetic sign (`γ > 0`), and the `e^{+iφ}` rotation sense. Magnitude DWI is insensitive to this choice, but it is fixed here so the **complex** signal and the susceptibility phase (§6.4) are reproducible across implementations. A real spin-echo value is `|S|` or `⟨w·cos φ⟩`. Averages `⟨·⟩` are weighted means over walkers (weights `w_i`, default `1`).
 
@@ -352,7 +354,7 @@ MUST record the `seed` and produce byte-reproducible trajectories from `(geometr
 MUST store **unwrapped** lab-frame positions. If the walk used a periodic cell, the producer MUST unwrap before storing (undo per-save jumps `> L/2` on periodic axes; leave non-periodic axes untouched), so that the gradient phase in §6.1 is correct. Storing wrapped positions is a conformance failure: each wrap injects a spurious `q·L` phase.
 
 ### 8.3 TE-prefix consistency
-MUST ensure the save grid is uniform and that any leading prefix is itself a converged walk to that shorter time (§3). Producers MUST NOT reorder or subsample walkers across the save axis.
+MUST ensure the save grid is uniform and that any leading prefix is itself a converged walk to that shorter time (§3). Producers MUST NOT reorder or subsample walkers across the save axis. A prefix of **whole segments** (§4.3) is the leading range of the file's segment keys and needs no re-encoding: its segments keep their certificates and the whole's is the bound over them (`fidelity.certified = "bounded"`, §10). A prefix that ends inside a segment is a re-encoding of the decoded windows it spans, certified afresh.
 
 ### 8.4 No sequence assumption
 A producer MUST NOT bake any pulse-sequence choice into the pack. The acquisition (gradients and RF) is applied at replay (§6.6); the producer's obligation is only to store the trajectory (and any tier channels) over the full walk to `T_max`. In particular there is no "refocusing time" a producer must record — refocusing is a property of the replayed sequence, not of the walk. (A producer that chooses a capability-narrowing codec does declare a refocusing-pulse *density* it can serve — `replay_envelope.acquisition.max_refocusing_pulses`, §9.4 rule 5. That is a limit of the chosen **storage**, not a sequence assumption baked into the walk: the raw channel carries none.)
@@ -420,6 +422,8 @@ A conformant representation or codec MUST satisfy six rules:
 
    **Inherited certification.** Packs that are blocks of one *fill* -- the same substrate, walk parameters, save grid, codec and containers, differing only in the walkers they hold -- MAY inherit the battery measurement instead of repeating it: one or more **certifying** packs of the fill carry the measured `fidelity` (`certified: "measured"`); every other pack carries `certified: "inherited"` and `inherited_from {id, err_max, floor_max}` naming a certifying pack, reports that pack's `err_max` (whole and per family and per tier), and reads its **own** split-half `floor_max` -- and, when partitioned, its own per-voxel floors -- over the same battery in the coded domain (the phases from the stored coefficients, no path decoded). A pack whose codec parameters differ from the pack it cites is non-conformant; a pack that inherited a certificate cannot certify another; a bank MAY re-measure any pack.
 
+7. **Storage shape.** Every stored array is one of three shapes, and a reader MUST be able to tell which from the key alone: **walker-leading** (its first axis is the walker axis, so a range of walkers is a range of the tensor); a **stream** — a variable-length per-walker record laid out contiguously in walker order and declared by a walker-leading count array `<name>_counts`, so walker `w`'s entries are the slice given by the prefix sum of the counts (the run-length occupancy `comp_rle_vals` / `comp_rle_lens` with `comp_rle_counts`); or a **table** named as such in the registry (the band scales `pos_band_scale` / `blt_band_scale`, `susc_path_scale`, the per-voxel certificate `voxel_ijk` / `voxel_certificate`, the field grids `susc_grid_*`). No other shape is conformant. Within a segment (§4.3) the same three shapes hold under the `s{i}/` prefix; a table that is the walk's rather than a window's (the weights `spin_weights`, a static label `comp_static`, the field grids, the voxel tables, `band_block`) is stored once, unprefixed, and shared by every segment.
+
 The `fidelity` object is **codec-agnostic** — it reports the decoded-vs-raw replay error whatever method produced it — so it lives in the **core** metadata (§10) and is read identically by any replayer or bank; only the codec *algorithms* live in the registry. How to read it: `err_max` is the worst-case replay error over the battery, `floor_max` the irreducible MC noise floor for the same ensemble, and `within_2x_floor: true` means the loss sits below `2×` that floor (scientifically negligible).
 
 One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
@@ -443,6 +447,11 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "dt_traj": 2.65e-4, "T_max": 0.053,  // s
     "diffusivity": 0.6e-9,               // m^2/s, FIXED (not a knob)
     "seed": 0,
+    "segments": {                        // REQUIRED (§4.3): the walk in windows of one duration
+      "n": 2, "n_t": 101, "T": 0.1,      //   S windows of n_seg saves (T_seg s) sharing their boundary saves;
+      "walks": [                         //   n_t above is S (n_seg - 1) + 1; a walk within one window has n = 1
+        {"first": 0, "last": 0, "seed": 0},        // the walks that produced the segments, by segment range
+        {"first": 1, "last": 1, "seed": 17} ] },   //   (a continuation appends with its own seed)
     "boundary": "periodic",              // OPTIONAL "periodic" | "reflecting" | "finite";
                                          //   sets grid-map sampling (§4.5) + bounds the envelope
                                          //   (a finite box restricts long-diffusion-time replays);
@@ -485,8 +494,11 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "floor_max": 0.0074,                 // irreducible MC noise floor (same ensemble)
     "within_2x_floor": true,             // err_max <= 2*floor_max -> loss is negligible
     "battery": "...",
-    "certified": "measured",             // "measured" here, or "inherited" from a certifying pack of the same fill
-    "inherited_from": null },            //   then {id, err_max, floor_max} of that pack (§9.4 rule 4)
+    "certified": "measured",             // "measured" here, "inherited" from a certifying pack of the same fill, or
+                                         //   "bounded": the sum of the segments' errors and the largest of their floors
+                                         //   (a prefix of whole segments, an appended continuation; §4.3, §8.3)
+    "inherited_from": null,              //   then {id, err_max, floor_max} of that pack (§9.4 rule 4)
+    "segments": [ { "err_max": 0.0012, "floor_max": 0.0071, "...": "..." } ] },   // one certificate per segment (§4.3)
   "mt": {                                // REQUIRED iff C4 parametric two-pool (§6.5.1); else absent
     "model": "two_pool",                 //   fixed-at-walk-time pool descriptor (not knobs)
     "f_bound": 0.081, "k_forward": 88.3, //   dimensionless, s^-1  (from S/V, kappa, dwell)
@@ -525,6 +537,7 @@ The substrate bank (a separate service) accepts a pack by validating it against 
 - **Arrays:** a single **safetensors** file. Safetensors is REQUIRED because it (a) carries **no executable code** — a pack is safe to download and memory-map from untrusted sources — (b) is strongly typed, and (c) is zero-copy. Under the identity codec each channel is one tensor under its channel name (§5); under another codec a channel's tensor keys are those the registry defines for that method (`CODEC_REGISTRY.md`).
 - **Metadata:** the JSON object of §10, serialized as a single string and stored in the safetensors `__metadata__` header under the key **`"rpk"`**. Producers MUST write it there; a sibling `.json` copy is OPTIONAL for human inspection. *Compatibility:* across the `0.x` line a reader MUST also accept the legacy header key `"json"` (used by the reference implementation before this spec fixed the canonical key); producers SHOULD migrate to `"rpk"`.
 - **Dataset sidecar (OPTIONAL):** a Croissant (`schema.org/Dataset` + MLCommons) `.croissant.jsonld` carrying `license`, `citation`, `provenance`, and `replay_envelope` for dataset-catalog interoperability.
+- **Segment keys (§4.3):** segment 0's tensors are stored under the channel keys; segment `i ≥ 1`'s under the same keys prefixed `s{i}/` (`s1/pos_x`, `s1/blt_bridge_dst`, `s1/comp_rle_counts`, `s1/susc_path_scale`). Tensors the walk shares across its segments (§9.4 rule 7) carry no prefix. Safetensors keeps every tensor a contiguous byte range, so the first `k` segments are the unprefixed keys and the prefixes `s1/ .. s{k-1}/`.
 - **Extension:** `.rpk`. **Naming:** the file basename SHOULD equal the last path segment of `id`.
 
 A pack MUST contain no code and MUST be openable without executing anything.
