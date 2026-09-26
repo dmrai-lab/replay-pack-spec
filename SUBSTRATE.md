@@ -1,7 +1,7 @@
 # The Substrate Specification (`.sub.json`)
 
 *Companion to the Replay Pack Specification (`RPK.md`) and the Replay Phantom Specification (`RPH.md`).
-Draft `0.2.2` for comment; nothing is numbered `1.0` before publication. `0.2.2` adds the `label_volume` surface kind (a segmented 3-D image: the wall is the set of faces between voxels of different pools) and documents `validity.thinnest_shell`, which the producers have been writing since `0.1` and neither this document nor the schema declared. `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
+Draft `0.2.2` for comment; nothing is numbered `1.0` before publication. `0.2.2` adds the `label_volume` surface kind (a segmented 3-D image: the wall is the set of faces between voxels of different pools) and documents `validity.thinnest_shell`, which the producers have been writing since `0.1` and neither this document nor the schema declared. It lands together with dmrai-lab/dmipy-sim#470, the producer and the geometry. `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
 
@@ -142,12 +142,15 @@ a `swept_polyline` cites its track file.
 | `format` | string | the container: `nrrd` (a detached `.nhdr` + `.raw`, or a single `.nrrd`), `mhd` (MetaImage), `nifti`, `tiff` (a multi-page file or a directory of slices), `hdf5` |
 | `sha256` | string | of `file`; a consumer MUST refuse an image that does not match it. A **detached** container is two files -- `LV60A.nhdr` names `LV60A.raw` and the voxels are in the second -- so this digest covers only the header, and a producer that wants the image itself covered records every file it read, each with its own digest, in `provenance.files` |
 | `voxel_size` | number[3] | the voxel's extent along each index axis, **in metres**. REQUIRED: a container that states its own spacing MUST agree with it, and a consumer MUST refuse a disagreement rather than resolve it by precedence |
-| `origin` | number[3] | the position of the lower corner of voxel `(0, 0, 0)`, in metres; default the coordinate origin |
+| `origin` | number[3] | the position, in metres, of the lower corner of voxel `(0, 0, 0)` **of the substrate**, which is the first voxel of the `crop` when there is one. A consumer MUST use it as it stands and MUST NOT add `crop * voxel_size` to it -- the crop's offset is already in it. Default the coordinate origin |
 | `labels` | object | `{"<label value>": "<pool name>"}`; every label value present in the (cropped) image MUST appear, and every pool name MUST be a pool of the spec. A label the map does not name MUST be refused, never dropped |
-| `crop` | integer[6] | `[i0, j0, k0, i1, j1, k1]`, half-open, in voxels of the cited image: the sub-volume that IS the substrate. Optional; absent means the whole image |
+| `crop` | integer[6] | `[i0, j0, k0, i1, j1, k1]`, half-open, in voxels of the cited image: the sub-volume that IS the substrate. Optional; absent means the whole image. Indices into the CITED image, so a consumer applies them to the file it read and then uses `origin` as given |
 
 The array index order of the payload is the container's own; a reader MUST present the grid in the
-`(i, j, k)` order of `voxel_size`, `origin` and `crop`.
+`(i, j, k)` order of `voxel_size`, `origin` and `crop`. Voxel `(i, j, k)` of the substrate spans
+`origin + (i, j, k) * voxel_size` to `origin + (i + 1, j + 1, k + 1) * voxel_size`, and
+`domain.box_min` / `box_max` are `origin` and `origin + shape * voxel_size` of the cropped grid: the
+three agree, and a consumer that finds they do not has read the crop twice.
 
 One `label_volume` image MAY carry more than two pools, and then the spec declares **one wall per
 pair of pools that share at least one face** — a pair that shares no face is not a wall. Every wall of
@@ -195,7 +198,7 @@ count from `realisation`, never from `request`.
 | `smallest_feature` | number | the smallest length the walk must resolve (smallest radius, thinnest sheath); the sub-step rules divide it |
 | `min_gap` | number or null | narrowest passage between walls |
 | `mesh_edge_feature_ratio` | number or null | median edge over `smallest_feature`, meshes only |
-| `thinnest_shell` | number or null | the thickness (m) of the thinnest SHELL pool, a myelin sheath being the case that occurs. It is what a field basis's node spacing is derived from, which is a different question from what the walk's step is derived from, so it is its own key rather than `smallest_feature` |
+| `thinnest_shell` | number or null | a MEASURE (m) of the thinnest SHELL pool's thickness, a myelin sheath being the case that occurs: per shell, the **median** over its inner surface of the distance to its outer surface, and `thinnest_shell` is the smallest of a substrate's shells'. A median and not a minimum, because a meshed surface is bumpy at its own resolution and its minimum is a property of the mesh rather than of the shell -- a 0.11 µm sheath had spots of 0.003 µm where the two surfaces graze. It is what a field basis's node spacing is derived from, which is a different question from what the walk's step is derived from, so it is its own key rather than `smallest_feature` |
 | `tiers` | string[] | subset of `gradient`, `relaxation`, `surface`, `field`, `exchange`: what a walk on this substrate CAN record |
 
 ### 3.9 `provenance`
