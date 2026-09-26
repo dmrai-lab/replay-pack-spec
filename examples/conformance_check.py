@@ -140,8 +140,8 @@ def check(path):
                         f"forbidden — such packs are Gradient-only (SPEC §9)")
         if any(env.get(f) for f in ("bulk_relaxation", "surface_relaxivity", "magnetization_transfer")):
             errs.append("distributional codec must declare Gradient tier only (SPEC §9)")
-    if env.get("bulk_relaxation") and not (meta.get("per_comp") or {}).get("T2"):
-        errs.append("bulk_relaxation tier declared but per_comp.T2 absent (SPEC §10)")
+    if "per_comp" in meta:
+        errs.append("pack carries per_comp: a tissue value stored as a pack property, refused since 0.4.0 (SPEC §8.5)")
     if env.get("field"):
         wp = meta.get("walk_params", {})
         if wp.get("cell_size") is None:

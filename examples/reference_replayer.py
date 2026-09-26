@@ -59,17 +59,20 @@ def replay_gradient(arrays, meta, G, dt_wf=None, weights=None):
 
 def replay_relaxation_logweight(arrays, meta, T2=None, T1=None, transverse=True):
     """SPEC §6.2: per-walker relaxation log-weight from the compartment channel.
-    Requires the Relaxation tier. `T2`/`T1` are lists indexed by compartment id;
-    default to `per_comp`. Returns (N_w,) log-weights (<=0)."""
+    Requires the Relaxation tier. `T2`/`T1` are lists indexed by compartment id, positive seconds,
+    inf for a pool that does not decay (SPEC §8.5: the pack carries none). Returns (N_w,) log-weights (<=0)."""
     env = meta.get("replay_envelope", {})
     if not (env.get("bulk_relaxation") or env.get("relaxation") or env.get("T1T2")):  # +0.x aliases
         raise ValueError("pack does not declare the Relaxation tier; "
                          "capability not present (SPEC §7/§13).")
     comp = np.asarray(arrays["compartment"], np.int64)      # (N_w, N_t)
-    pc = meta.get("per_comp", {})
-    T2 = np.asarray(T2 if T2 is not None else pc["T2"], float)
+    if T2 is None:
+        raise ValueError("T2 by pool id is a replay knob the caller supplies (SPEC §8.5); the pack carries none")
+    T2 = np.asarray(T2, float)
+    if not (T2 > 0).all():
+        raise ValueError("T2 by pool must be positive; inf for a pool that does not decay")
     dt = float(meta["walk_params"]["dt_traj"])
-    invT2 = np.where(np.isfinite(T2) & (T2 > 0), 1.0 / np.maximum(T2, 1e-30), 0.0)
+    invT2 = 1.0 / T2
     # transverse spin-echo: chi = 1 throughout the encoding
     rate = invT2[comp]                                       # (N_w, N_t)
     if not transverse and T1 is not None:

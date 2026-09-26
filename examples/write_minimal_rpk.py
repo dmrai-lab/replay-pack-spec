@@ -33,7 +33,6 @@ def write_pack(path, positions, dt, D, seed, pack_id):
             "dt_traj": float(dt), "T_max": float((n_t - 1) * dt),
             "diffusivity": float(D), "seed": int(seed),
         },
-        "per_comp": None,
         "compression": {"method": "identity", "K": None, "walker_preserving": True},
         "replay_envelope": {
             "gradient": True,                 # T0 only

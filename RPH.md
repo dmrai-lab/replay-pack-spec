@@ -121,9 +121,12 @@ This version defines one analytic model:
  "model": "free_water", "params": {"diffusivity": 3.0e-9}}
 ```
 
-with response `E = exp(-b D)`, independent of gradient direction and of `B0`. A replayer MUST
-refuse an analytic `model` it does not recognise rather than guessing, exactly as SPEC §9
-requires for codecs. Further models are additions to this table, not changes to the format.
+with response `E = exp(-b D)`, independent of gradient direction and of `B0`. It MAY carry
+`T2_s` / `T1_s` (s), one positive number each since a closed form has one pool, and then its
+response is multiplied by `exp(-TE / T2_s)` over the acquisition's echo time and `exp(-TM / T1_s)`
+over its mixing time; without them it does not relax. A replayer MUST refuse an analytic `model` it
+does not recognise rather than guessing, exactly as SPEC §9 requires for codecs. Further models are
+additions to this table, not changes to the format.
 
 **Namespaced models.** A `model` of the form `"<package>:<Name>"` is a closed form another package
 defines (a compartment model of dmipy-fit: `"dmipy_fit:C1Stick"`, parameters by the model's own names
@@ -154,10 +157,18 @@ in this version.
 A pack carries the substrate specification it was walked from (`RPK.md` §10) and no tissue value; the values a
 replay applies are knobs. A phantom fixes them per substrate: `substrates[i].tissue`, when present, is an
 object of the knobs of a pack's replay -- per-pool `T2` / `T1` (s), the wall relaxivity `rho` (m/s), the field
-source's `chi_iso` / `chi_aniso` -- and MUST be applied by the replayer to that substrate; a knob not listed
-takes the pack's **nominal** value (the embedded specification's declared value, its `nominal_field_T` as
-`B0` when the replay gives none). The override is part of the phantom's declaration and travels with the
-file: the same phantom replays the same way everywhere.
+source's `chi_iso` / `chi_aniso` -- and MUST be applied by the replayer to that substrate. A knob not listed is
+**not applied**: the tier it drives is off for that substrate (no relaxation without a `T2` / `T1`, no field
+phase without a `chi`), and a replayer MUST NOT read the pack's nominal values for it (SUBSTRATE.md §6: the
+nominal values are taken explicitly by whoever writes the phantom, never as a silent default). The override is
+part of the phantom's declaration and travels with the file: the same phantom replays the same way everywhere.
+
+`T2` and `T1` are each a JSON **list by pool id** of the pack's embedded specification: one entry per pool,
+in id order, a positive number of seconds or `null` for a pool that does not decay. A list of another length,
+an object keyed by pool name, a single number for every pool, or a `0` (which a rate-based replayer would read
+as an infinite rate, not as "no decay") MUST be refused. A pool the walk never seeds still has an entry, since
+the list is judged on the specification, not on the walkers. A pack that embeds no specification has no pool
+ids to list by and MUST NOT carry per-pool values (`RPK.md` §8.5: such a pack replays the gradient alone).
 
 ## 4. Orientation: a pose is a rotation
 
@@ -299,7 +310,8 @@ JSON under the safetensors header key **`"rph"`**:
   "substrates": [
     {"id": "canonical/wm/g070-f055", "kind": "pack", "m0": 0.70, "embedded": true,
      "sha256": "…", "pack_meta": {…},                 // arrays under substrate0/
-     "tissue": {"T2": [0.055, 0.05, 0.01], "chi_iso": -0.1e-6}},   // OPTIONAL knobs this substrate replays at (§3.2)
+     "tissue": {"T2": [0.055, 0.05, 0.01], "chi_iso": -0.1e-6}},   // OPTIONAL knobs this substrate replays at (§3.2):
+                                                      //   T2 / T1 a list by pool id of the embedded spec, null = no decay
     {"id": "canonical/gm/…", "kind": "pack", "m0": 0.85, "embedded": true,
      "sha256": "…", "pack_meta": {…}},
     {"id": "csf/free-water",   "kind": "analytic", "m0": 1.00,
