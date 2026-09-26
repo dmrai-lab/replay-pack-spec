@@ -1,7 +1,7 @@
 # The Substrate Specification (`.sub.json`)
 
 *Companion to the Replay Pack Specification (`RPK.md`) and the Replay Phantom Specification (`RPH.md`).
-Draft `0.2.1` for comment; nothing is numbered `1.0` before publication. `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
+Draft `0.2.2` for comment; nothing is numbered `1.0` before publication. `0.2.2` adds the `label_volume` surface kind (a segmented 3-D image: the wall is the set of faces between voxels of different pools). `0.2.1` adds the optional header key `nominal_field_T`. `0.2.0` adds the `sphere_union` surface kind (sphere-grown cells: CATERPillar), inline or as a table file. `0.1.1`: `susceptibility.chi_iso` / `chi_aniso` MAY be `null` -- the producer declares the field source and not its values.*
 
 ## 1. Scope and purpose
 
@@ -103,7 +103,8 @@ An array. Each wall:
 | `surface_relaxivity` | `{inside, outside}` | ρ₂ (m/s) seen from each side |
 | `mt_reactivity` | `{inside, outside}` | κ_MT (m/s) per side, `0` off |
 
-`surface.kind` is one of `sphere`, `cylinder`, `ellipsoid`, `plane`, `swept_polyline`, `sphere_union`, `mesh`, with:
+`surface.kind` is one of `sphere`, `cylinder`, `ellipsoid`, `plane`, `swept_polyline`, `sphere_union`, `mesh`,
+`label_volume`, with:
 
 - `sphere`: `center[3]`, `radius`; `cylinder`: `center[3]`, `axis[3]`, `radius` (infinite along `axis`
   unless `length` is given); `ellipsoid`: `center[3]`, `semiaxes[3]`, `rotation[3][3]` optional;
@@ -118,7 +119,7 @@ An array. Each wall:
   `instances.centers[n][3]` + `instances.radii[n]`, or as a table `file` with `format: caterpillar`,
   `scale`, `sha256`, `column` (`inner_radius` | `outer_radius`: which radius the surface is) and
   `cell_type` (`axon` | `glial_cell` | `blood_vessel`: which rows); `mesh`: `file`,
-  `format` (`ply`, `obj`, `stl`), `scale` (file units → metres), `sha256`.
+  `format` (`ply`, `obj`, `stl`), `scale` (file units → metres), `sha256`; `label_volume`: see §3.5.1.
 - `instances` (optional): arrays of per-instance parameters (`centers`, `radii`, …) so a packing of
   `N` identical-role objects is **one** wall entry with `N` instances sharing pools and properties;
   instance `k` is the `k`-th object where a consumer needs object ids (`RPK.md` §8.5).
@@ -126,6 +127,47 @@ An array. Each wall:
 Two walls MAY share a pool on one side (a myelin sheath is `inner: intra|myelin` and
 `outer: myelin|extra`). A pool MUST be bounded by walls or by `reflect`/`periodic` faces unless it is
 pool `0` in an `open` domain.
+
+#### 3.5.1 `label_volume` — a segmented 3-D image
+
+A segmented image is the native form of many substrates (micro-CT rocks, segmented electron
+microscopy, vessel and placenta masks). Its wall needs no isosurface: **every face shared by two
+voxels of different labels is a piece of axis-aligned plane**, so the label grid IS the surface, and
+it is the same surface whichever consumer reads it. The image is **cited, never embedded**, exactly as
+a `swept_polyline` cites its track file.
+
+| key | type | meaning |
+|---|---|---|
+| `file` | string | the segmented image, cited by the path the dataset distributes it at |
+| `format` | string | the container: `nrrd` (a detached `.nhdr` + `.raw`, or a single `.nrrd`), `mhd` (MetaImage), `nifti`, `tiff` (a multi-page file or a directory of slices), `hdf5` |
+| `sha256` | string | of `file`; a consumer MUST refuse an image that does not match it |
+| `voxel_size` | number[3] | the voxel's extent along each index axis, **in metres**. REQUIRED: a container that states its own spacing MUST agree with it, and a consumer MUST refuse a disagreement rather than resolve it by precedence |
+| `origin` | number[3] | the position of the lower corner of voxel `(0, 0, 0)`, in metres; default the coordinate origin |
+| `labels` | object | `{"<label value>": "<pool name>"}`; every label value present in the (cropped) image MUST appear, and every pool name MUST be a pool of the spec. A label the map does not name MUST be refused, never dropped |
+| `crop` | integer[6] | `[i0, j0, k0, i1, j1, k1]`, half-open, in voxels of the cited image: the sub-volume that IS the substrate. Optional; absent means the whole image |
+
+The array index order of the payload is the container's own; a reader MUST present the grid in the
+`(i, j, k)` order of `voxel_size`, `origin` and `crop`.
+
+One `label_volume` image MAY carry more than two pools, and then the spec declares **one wall per
+pair of pools that share at least one face** — a pair that shares no face is not a wall. Every wall of
+a `label_volume` substrate MUST cite the same `file`, `crop` and `labels`: they are faces of one grid.
+`domain.box_min` / `box_max` are the cropped grid's own extent, and `domain.boundary` says what its
+outer faces do; those faces are the crop's, not the substrate's, so they carry no
+`surface_relaxivity` from any wall.
+
+`validity.smallest_feature` is the smallest `voxel_size` component: one voxel is the smallest feature
+a segmentation can express.
+
+**The surface is the Manhattan surface of the segmentation.** For a convex pool the voxel-face area
+is twice the sum of its three projected areas, so a voxelised sphere's is `6 π R²` — exactly `3/2` of
+the sphere's own `4 π R²` — and a voxelised circle's perimeter is `8 R`, `4/π` of `2 π R`. Refining
+the grid does **not** converge these onto a smooth surface. A surface relaxivity or an MT reactivity
+on a `label_volume` wall therefore acts against the voxelised `S/V`, which is the quantity a random
+walk on a segmentation computes and the quantity a published relaxivity fitted on one was fitted to:
+such a `ρ` is tied to the image's resolution and is not transferable to another one. A consumer that
+wants a smooth-surface rate needs a smoothed surface, which is a different substrate and a different
+spec.
 
 ### 3.6 `seeding`
 
