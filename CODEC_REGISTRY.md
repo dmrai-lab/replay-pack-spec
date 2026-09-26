@@ -40,6 +40,23 @@ others; it MUST refuse (never guess) a `method` it does not recognize (SPEC §9,
 For tiers (SPEC §7) and conformance (SPEC §13), a channel counts as **present** if the file
 contains the channel's raw key **or** the codec's stored key-group listed below.
 
+## Segments and storage shapes
+
+A pack stores its walk in segments (SPEC §4.3): every key-group below describes **one window**; segment 0's
+group is stored under the keys as listed and segment `i ≥ 1`'s under the same keys prefixed `s{i}/`. Every
+key is one of the three storage shapes of SPEC §9.4 rule 7 — walker-leading, a stream with its `_counts`,
+or a table — and the registry names which:
+
+| shape | keys |
+|---|---|
+| walker-leading | `pos_x` / `pos_y` / `pos_z` (or `pos_x_ends`, `pos_x_b<i>`), `blt_bridge_dst` (or `blt_b<i>`), `blt_start`, `blt_endpoint`, `susc_path_dct`, `comp_static`, `comp_rle_counts`, `bound_rle_counts`, `spin_weights`, `band_block` |
+| stream (with `<name>_counts`) | `comp_rle_vals`, `comp_rle_lens`, `bound_rle_vals`, `bound_rle_lens` |
+| table | `pos_band_scale`, `blt_band_scale`, `susc_path_scale`, `susc_grid_iso_local`, `susc_grid_iso_P`, `susc_grid_aniso_G`, `voxel_ijk`, `voxel_certificate` |
+
+Shared across segments and stored once, unprefixed: `spin_weights`, `comp_static` (a walk no walker crosses in;
+a walk that crosses in any window stores runs in every window), `band_block`, the `susc_grid_*` tables and the
+voxel tables. Per segment: everything else, including that segment's scale tables.
+
 ## Registered codecs
 
 ### `identity` (normative baseline — always lossless)

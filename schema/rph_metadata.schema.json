@@ -151,8 +151,17 @@
           },
           "tissue": {
             "type": "object",
-            "description": "knobs of the pack's replay this substrate replays at (RPH 3.2)",
-            "additionalProperties": true
+            "description": "knobs of the pack's replay this substrate replays at (RPH 3.2); T2 / T1 are lists by pool id of the embedded specification, one entry per pool, null for no decay",
+            "properties": {
+              "T2": {"type": "array", "items": {"type": ["number", "null"], "exclusiveMinimum": 0}},
+              "T1": {"type": "array", "items": {"type": ["number", "null"], "exclusiveMinimum": 0}},
+              "rho": {"type": "number"},
+              "D": {"type": "number"},
+              "kappa": {"type": "number"},
+              "chi_iso": {"type": "number"},
+              "chi_aniso": {"type": "number"}
+            },
+            "additionalProperties": false
           },
           "model": {
             "type": "string"
