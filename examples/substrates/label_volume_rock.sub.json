@@ -1,0 +1,156 @@
+{
+  "id": "imperial2007/lv60a",
+  "domain": {
+    "box_min": [
+      0.00075015,
+      0.00075015,
+      0.00075015
+    ],
+    "box_max": [
+      0.0037507499999999997,
+      0.0037507499999999997,
+      0.0037507499999999997
+    ],
+    "boundary": [
+      "reflect",
+      "reflect",
+      "reflect"
+    ],
+    "surface_relaxivity": 0.0
+  },
+  "pools": [
+    {
+      "id": 0,
+      "name": "free",
+      "D": 2.07e-09,
+      "water_fraction": 1.0,
+      "T2": 3.1,
+      "T1": null,
+      "susceptibility": null
+    },
+    {
+      "id": 1,
+      "name": "grain",
+      "D": null,
+      "water_fraction": 0.0,
+      "T2": null,
+      "T1": null,
+      "susceptibility": null
+    }
+  ],
+  "walls": [
+    {
+      "name": "grain|free",
+      "surface": {
+        "kind": "label_volume",
+        "file": "LV60A.nhdr",
+        "format": "nrrd",
+        "sha256": "974e6b1ea2308a54d0aba53a2b2fb2b5b47f718f7093c17c3e583a14d378bdd5",
+        "voxel_size": [
+          1.0002e-05,
+          1.0002e-05,
+          1.0002e-05
+        ],
+        "origin": [
+          0.00075015,
+          0.00075015,
+          0.00075015
+        ],
+        "labels": {
+          "0": "free",
+          "1": "grain"
+        },
+        "crop": [
+          75,
+          75,
+          75,
+          375,
+          375,
+          375
+        ]
+      },
+      "inside_pool": 1,
+      "outside_pool": 0,
+      "permeability": {
+        "in_to_out": 0.0,
+        "out_to_in": 0.0
+      },
+      "surface_relaxivity": {
+        "inside": 4.1e-05,
+        "outside": 4.1e-05
+      },
+      "mt_reactivity": {
+        "inside": 0.0,
+        "outside": 0.0
+      }
+    }
+  ],
+  "seeding": {
+    "pools": [
+      0
+    ],
+    "rule": "uniform_by_volume",
+    "weights": "water_fraction"
+  },
+  "validity": {
+    "smallest_feature": 1.0002e-05,
+    "tiers": [
+      "gradient",
+      "relaxation",
+      "surface"
+    ],
+    "min_gap": null,
+    "mesh_edge_feature_ratio": null,
+    "thinnest_shell": null
+  },
+  "frame": {
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "in_plane": null
+  },
+  "description": "LV60A sand pack: the central 300^3 crop of the released 450^3 micro-CT image at 10.002 um; the pore fluid walks between the voxel faces of the grain",
+  "nominal_field_T": null,
+  "request": null,
+  "realisation": {
+    "shape": [
+      300,
+      300,
+      300
+    ],
+    "porosity": 0.3688355925925926,
+    "surface_to_volume": 59821.238561408434,
+    "voxel_size_m": [
+      1.0002e-05,
+      1.0002e-05,
+      1.0002e-05
+    ]
+  },
+  "provenance": {
+    "source": "Imperial College 2007 micro-CT collection (Dong & Blunt 2009), CC BY 4.0",
+    "files": [
+      {
+        "path": "LV60A.nhdr",
+        "sha256": "974e6b1ea2308a54d0aba53a2b2fb2b5b47f718f7093c17c3e583a14d378bdd5"
+      },
+      {
+        "path": "LV60A.raw",
+        "sha256": "5a30136d0461bf33b4e05e23895a23423e9623744f5265a1125690b8fdf4bae1"
+      }
+    ],
+    "transformations": [
+      "labels -> pools {0: 'free', 1: 'grain'}; the 'free' pool holds the water, the others water_fraction 0",
+      "the wall is every voxel face between two pools (the Manhattan surface of the segmentation): measured S/V of the 'free' pool 59821.2 1/m at porosity 0.368836",
+      "the crop's own outer faces are not a wall: they are the domain's reflect x, reflect y, reflect z",
+      "crop [75, 75, 75, 375, 375, 375] of the released image, half-open, in voxels"
+    ],
+    "created": "2026-09-26",
+    "software": {
+      "name": "dmipy-sim",
+      "version": "example"
+    }
+  },
+  "substrate_spec_version": "0.1"
+}
