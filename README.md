@@ -109,7 +109,7 @@ Dual-licensed by artifact type:
 - **Code** (`examples/`, `schema/` machinery): **Apache-2.0** — see [`LICENSE`](LICENSE).
 
 Adopt, implement, and extend freely under those terms. A pack's *own* `license` field records
-the license of the **source substrate**, which this format never relicenses.
+the license of the **source substrate**, which this format never relicenses. A pack distributed under terms of its own states them in `pack_license` (an SPDX expression) and `pack_license_url`; the format never relicenses a source, and a pack never hides its own terms.
 
 ## Citing
 
