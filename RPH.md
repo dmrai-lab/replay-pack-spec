@@ -118,10 +118,11 @@ This version defines one analytic model:
 
 ```jsonc
 {"id": "csf/free-water", "kind": "analytic", "m0": 1.00,
- "model": "free_water", "params": {"diffusivity": 3.0e-9}}
+ "model": "free_water", "params": {"diffusivity": 3.0e-9}, "T2_s": 2.0}
 ```
 
-with response `E = exp(-b D)`, independent of gradient direction and of `B0`. A replayer MUST
+with response `E = exp(-b D) · exp(-TE / T2_s)`, independent of gradient direction and of `B0`
+(`T2_s`, and likewise `T1_s` over a mixing time, are OPTIONAL: absent, no relaxation applies). A replayer MUST
 refuse an analytic `model` it does not recognise rather than guessing, exactly as SPEC §9
 requires for codecs. Further models are additions to this table, not changes to the format.
 
@@ -136,8 +137,12 @@ form evaluated with its axis along the third column of the pose -- is expanded o
 with the voxel's orientation distribution, so it MUST have an orientation field like a pack and MUST NOT
 disperse itself (a model that carries its own dispersion is not citable: the phantom's field would
 disperse it twice). An entry without the flag (free water) is isotropic and MUST NOT be given one.
-A closed form has no field term and no magnetisation of its own: with a field or a transmit scale asked
-of the phantom, a replayer states once per such substrate that it contributes at its closed form.
+A closed form is **full-tier**: every knob a pack takes has an exact value for it. A form with no
+susceptibility source has a field of zero at any `B0`; with no wall it has no surface relaxivity; with no
+bound pool no magnetisation transfer; under an RF train it is a static spin's response. What it carries it
+evaluates exactly: free water's bulk relaxation, `exp(-TE / T2)` (and `exp(-TM / T1)`), when the entry
+declares `T2_s` (`T1_s`). A replayer MUST NOT warn about, skip, or fill in physics for a closed form: the
+zeros are the physics.
 
 **`inert` is not air.** It is defined by contributing nothing, which is a modelling statement,
 not a material. Air is the opposite of inert magnetically: the air--tissue susceptibility step
