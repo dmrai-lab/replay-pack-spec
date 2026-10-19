@@ -10,6 +10,7 @@ Minimal, dependency-light demonstrations of the Replay Pack format. Requirements
 | `reference_replayer.py` | A **replayer** in ~40 lines: `load_rpk` + the Gradient (§6.1) and Relaxation (§6.2) replay operations. No dmipy-sim. |
 | `conformance_check.py` | A **validator** against SPEC §13 + the JSON schema. `python conformance_check.py pack.rpk`. |
 | `demo_free_diffusion.py` | **End-to-end**: produce → validate → replay at several b-values, checked against exact `exp(-bD)` to the MC noise floor. Run this first. |
+| `continuous_basis_check.py` | **Numerical check of SPEC §9.5**: the integration-by-parts identity between the `continuous` bands and the cosine projection of the increments, the free-bridge band variances in both bases and their limit, and the K-band series at an instant. NumPy only. |
 | `dmipy_sim_interop.py` | **Interop**: consume a pack written by dmipy-sim with the generic tools here (`python dmipy_sim_interop.py pack.rpk`), or `--build` a tiny one via dmipy-sim then validate+replay it. |
 
 ## Quick start

@@ -114,6 +114,31 @@ def check(path):
         errs.append("C1 metadata predates the occupancy-column layout (no 'columns'); the arrays "
                     "are readable but declared differently — re-encode (registry 0.5.0)")
 
+    # 2a. the basis of the band-stored channels (SPEC §9.5): `dst1` (the default when absent) is
+    # on the saves, `continuous` on [0, T] with no save count, a block record and certified terms.
+    comp = meta.get("compression", {})
+    basis = comp.get("basis", "dst1")
+    wp = meta.get("walk_params", {})
+    if basis not in ("dst1", "continuous"):
+        errs.append(f"compression.basis {basis!r} is not 'dst1' or 'continuous'; MUST be refused (SPEC §9.5.1)")
+    elif basis == "continuous":
+        if method == "identity":
+            errs.append("compression.basis 'continuous' with the identity codec: raw arrays are saves (SPEC §9.5.1)")
+        if not wp.get("block"):
+            errs.append("continuous pack without walk_params.block {h, m, precision} (SPEC §9.5.5)")
+        for k in ("n_t", "dt_traj"):
+            if k in wp:
+                errs.append(f"continuous pack carries walk_params.{k}: it has no saves (SPEC §9.5.6)")
+        terms = (meta.get("fidelity") or {}).get("terms") or {}
+        if "truncation" not in terms or "quadrature" not in terms:
+            errs.append("continuous pack without fidelity.terms {truncation, quadrature} (SPEC §9.5.5)")
+    else:
+        if "block" in wp:
+            errs.append("walk_params.block on a pack whose bands are on the saves (SPEC §9.5.5)")
+        for k in ("n_t", "dt_traj"):
+            if k not in wp:
+                errs.append(f"walk_params.{k} missing (REQUIRED with compression.basis 'dst1', SPEC §9.5.2)")
+
     # 2b. required positions channel (codec-aware; shape only checkable for identity)
     if not _present("positions", keys):
         errs.append("missing required 'positions' channel / codec sub-arrays (SPEC §5.1/§9)")
