@@ -103,7 +103,6 @@ Two kinds of quantity carry units in this standard, both fixed to SI so that a p
 | boundary local time | `ℓ` | metre (m) | `boundary_local_time`, at `ρ/D = 1` (§6.3) |
 | relaxation times | `T1`, `T2` | second (s) | *not stored* -- replay knobs applied over the `compartment` channel (§6.2) |
 | bound occupancy, spin weight | `b_i`, `w_i` | dimensionless | `compartment` (`bound` column), `spin_weights` |
-| field-map grid spacing | — | metre (m) | `walk_params.cell_size` |
 
 A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
 
@@ -123,19 +122,19 @@ A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
 
 ### 4.2 Frame and positions
 - **Frame.** Positions are in a fixed **laboratory frame**. Substrate *orientation* is a replay knob applied by rotating the **waveform** (and field direction), never by rotating stored positions (which would invalidate periodic and field-map channels).
-- **Continuous.** Stored positions MUST be the *unwrapped* lab-frame trajectory (§8.2). Periodicity, if any, is a property of auxiliary field-map channels, not of `positions`.
+- **Continuous.** Stored positions MUST be the *unwrapped* lab-frame trajectory (§8.2). Periodicity, if any, is a property of the walk's box (§4.5), not of `positions`.
 - **Substrate frame (intrinsic orientation).** Because orientation is applied by rotating the acquisition, a replayer needs to know how the substrate is oriented *within* the stored lab frame — otherwise "parallel" vs "perpendicular" B₀ (very different susceptibility dephasing) and each diffusion-gradient direction are undefined relative to the tissue. A pack SHOULD therefore declare `walk_params.substrate_frame` (§10): a **3×3 orthonormal, right-handed matrix `R`** whose columns are a canonical substrate basis expressed in stored coordinates, with **column 3 (`z`) the primary structural axis** (e.g. the fibre-bundle direction) and columns 1–2 a **fixed perpendicular basis**. A single axis is insufficient: it leaves a free rotation about itself, so the perpendicular plane — and hence any non-axisymmetric structure, multi-direction scheme, or b-tensor — would be gauge-dependent from run to run. The producer MUST pin `x`/`y` deterministically, aligning them to genuine in-plane structure where one exists. For a **single, axisymmetric** population, `x`/`y` are a fixed but arbitrary basis (e.g. Gram–Schmidt from a fixed reference). For a **multi-population (e.g. crossing)** substrate the producer MUST anchor the frame to a **primary** population, never to a principal-axis/PCA average over all positions — that average is the bundles' *bisector*, which is no real population's axis and rotates as the crossing angle opens, leaving a crossing-angle series with no shared reference. The RECOMMENDED convention: `z` = the primary population's mean axis (chosen by a deterministic rule declared in provenance — e.g. largest by volume, tie-broken by index, independent of packing RNG); `y` = the secondary population's mean axis projected perpendicular to `z` (so the crossing opens into `+y`); `x = y × z`. The primary population then sits at `z` in every pack of a crossing-angle series and the secondary rotates `z → +y` (one bundle held straight, the other rotating), so replays are directly comparable. Two populations fully pin the frame; further populations are merely described by their axes within it. A direction given in the **canonical frame** (`z` along the primary axis) maps to stored coordinates as `d_stored = R · d_canonical`; a replayer orients an acquisition onto the pack by this rotation. Every pack SHOULD carry `substrate_frame` for uniform behaviour, **including isotropic substrates**, for which `R` MAY be the identity but MUST still be fixed. A pack that omits it MUST be treated as `R = I` (positions already in the canonical frame); producers of oriented substrates are strongly encouraged not to rely on this default.
 
 ### 4.3 Time
 The stored walk is a function of time on `[0, T_max]`, `T_max = walk_params.T_max` (s). There is no save grid: a channel is the function of §9.5.4, and the temporal resolution of a pack is its band `K / (2 · T_max)` (§9.4 rule 6). The integrator's step is a producer concern and is neither stored nor standardized; what is stored of how the walk was accumulated is the block `(h, m)` (§9.5.5).
 
-**Storage windows.** A producer MAY store a walk as `n` consecutive **storage windows** of one duration `T`, consecutive windows sharing their boundary instant, so that `T_max = n T`. A storage window is a unit of storage, not of acquisition: each is encoded on its own (its own endpoints, its own bands) and certified on its own, and the walk is extended (§3, additivity in time), cut to a prefix of whole windows, or joined at a window boundary without re-encoding the others. A pack stored this way declares the window table `walk_params.windows = {n, T, walks}`, `walks` listing the walk runs that produced the windows as `{first, last, seed}` in window indices (a resumed walk adds a run with its own seed); window 0's tensors carry the channel names and window `i ≥ 1`'s the same names under the prefix `s{i}/`, beside the tensors every window shares (the weights, a static label, grid maps), which appear once; `fidelity.windows` lists each window's certificate (§9.4) and the whole's `fidelity` is the bound over them. A replay of an acquisition spanning several windows is the sum of each window's contraction over the part of the acquisition it holds, the shared boundary instant carrying no weight of its own. A pack without the table is one window, `n = 1`, `T = T_max`; the reference implementation writes the table on every pack.
+**Storage windows.** A producer MAY store a walk as `n` consecutive **storage windows** of one duration `T`, consecutive windows sharing their boundary instant, so that `T_max = n T`. A storage window is a unit of storage, not of acquisition: each is encoded on its own (its own endpoints, its own bands) and certified on its own, and the walk is extended (§3, additivity in time), cut to a prefix of whole windows, or joined at a window boundary without re-encoding the others. A pack stored this way declares the window table `walk_params.windows = {n, T, walks}`, `walks` listing the walk runs that produced the windows as `{first, last, seed}` in window indices (a resumed walk adds a run with its own seed); window 0's tensors carry the channel names and window `i ≥ 1`'s the same names under the prefix `s{i}/`, beside the tensors every window shares (the weights, a static label), which appear once; `fidelity.windows` lists each window's certificate (§9.4) and the whole's `fidelity` is the bound over them. A replay of an acquisition spanning several windows is the sum of each window's contraction over the part of the acquisition it holds, the shared boundary instant carrying no weight of its own. A pack without the table is one window, `n = 1`, `T = T_max`; the reference implementation writes the table on every pack.
 
 ### 4.4 Signal and sign convention
 The canonical signal is complex, `S = ⟨w · e^{+iφ}⟩`, with phase `φ = γ ∫ G·r dt` (§6.1), a **positive** gyromagnetic sign (`γ > 0`), and the `e^{+iφ}` rotation sense. Magnitude DWI is insensitive to this choice, but it is fixed here so the **complex** signal and the susceptibility phase (§6.4) are reproducible across implementations. A real spin-echo value is `|S|` or `⟨w·cos φ⟩`. Averages `⟨·⟩` are weighted means over walkers (weights `w_i`, default `1`).
 
-### 4.5 Grids
-Shared Field **grid maps** (§5.2, §6.4) are sampled at the walker's position on a uniform grid whose axes are in metres and whose spacing is `walk_params.cell_size`. For a **periodic** substrate the position is **wrapped** into the field cell, `r mod cell_size`; for a **finite, non-periodic** substrate it is **clamped** to the grid bounds. The producer declares which via `walk_params.boundary` (§10); wrapped is the default. (The per-walker Field **basis** representation of §6.4.1 is sampled at walk time and carries no replay-time grid, so this convention does not apply to it.)
+### 4.5 Boundary
+`walk_params.boundary` (§10) declares the walk's box: `periodic`, `reflecting` or `finite`; the default is `periodic`. It bounds the envelope (a finite box restricts long-diffusion-time replays). Stored positions are unwrapped either way (§8.2).
 
 ---
 
@@ -158,14 +157,9 @@ A pack is a set of named arrays (**channels**) plus a metadata object (§10). A 
 | `spin_weights` | `(N_w,)` | float32 | — | Per-walker statistical weight `w_i` (e.g. compartment volume weighting). Default `1`. | all tiers |
 | `compartment` | `(N_w,)` piecewise-constant functions of `t`, per column | int8 / int16 | label | **Occupancy over the declared pools**, as one or more named columns. The `comp` column is the exclusive geometric axis: the compartment id of walker `i` at time `t`, id **0 the extra-cellular / free compartment by convention**, positive ids the pool ids of the embedded `substrate` specification. Further columns are occupancies on **independent** axes — `bound` for the MT macromolecular pool (§6.5), `0` free and `1` bound. A column is a static label or an event list (§9.5.7). | Relaxation (`comp`); Magnetization transfer (`bound`) |
 | `boundary_local_time` | `(N_w,)` functions of `t` | float32 | m (see below) | Cumulative wall-contact measure `B_i(t)` of walker `i`, nondecreasing, with **`ρ/D = 1`** (dimension of length ÷ diffusivity is folded so that replay multiplies by the desired `ρ/D`); stored as bands (§9.5.2). See §6.3. | Surface |
-| `susc_field_0` | producer grid | float32 | per unit susceptibility | m=0 (isotropic / mean) component of the substrate's normalized off-resonance field map. | Field |
-| `susc_field_C` | producer grid | float32 | " | ℓ=2 cosine (anisotropic) component. | Field |
-| `susc_field_S` | producer grid | float32 | " | ℓ=2 sine (anisotropic) component. | Field |
 | `susc_field_basis` | `(N_w, 13)` functions of `t` | float32 | per unit susceptibility (dimensionless) | Per-walker off-resonance field basis `b(t)` **accumulated along the walk at the walker's own position** — the *general* Field representation (§6.4.1). The 13 components are `iso_local` (1), `iso_P` (6), and `aniso_G` (6): the isotropic-source and rank-2 anisotropic-source responses, projected onto the 6-vector `Q(H)` of the main-field direction at replay. The component order is fixed by §5.3; the 13 components carry 12 degrees of freedom (§5.3). Stored as `K` temporal modes of each component (§9.5.2). Per-walker ⇒ needs a walker-preserving codec (§9.4). | Field |
 
-The Field tier has **two representations of the same off-resonance physics** (§6.4), a producer choosing one:
-- **Shared grid maps** `susc_field_{0,C,S}` — **normalized off-resonance basis maps** on a grid, sampled at replay (§6.4). `susc_field_0` carries the isotropic part and `susc_field_{C,S}` the axially-anisotropic (ℓ=2) part. Compact and reusable, but assumes a field **translationally invariant along the fibre axis** (the straight-cylinder idealization); best for periodic/analytic substrates. Accompanied by `walk_params.cell_size` (grid spacing, m), the normalization scale(s) (reference: `walk_params.delta_chi_a`), and, where oriented, `per_comp.R`.
-- **Per-walker basis** `susc_field_basis` — the field basis **accumulated along each trajectory** (§6.4.1), the analog of `boundary_local_time` for the field tier. It carries no invariance assumption and so serves **arbitrary 3-D morphology** (undulating/dispersed meshes) and **any** main-field direction via the full rank-2 `Q(H)` contraction; the cost is per-walker storage. Accompanied by `walk_params.delta_chi_a` and the field-grid metadata used to build it (`walk_params.field_grid`, §10).
+The Field tier has **one representation**, `susc_field_basis` — the field basis **accumulated along each trajectory** (§6.4.1), the analog of `boundary_local_time` for the field tier. It carries no invariance assumption and so serves **arbitrary 3-D morphology** (undulating/dispersed meshes) and **any** main-field direction via the full rank-2 `Q(H)` contraction; the cost is per-walker storage. Accompanied by `walk_params.delta_chi_a`, the field-grid metadata used to build it (`walk_params.field_grid`, §10) and the read interval `walk_params.field_read_interval` (§9.5.5). No replay reads a field grid (§6.4).
 
 A fully general per-voxel susceptibility *tensor* field remains a §14 extension; the `susc_field_basis` set covers an isotropic source plus a single rank-2 anisotropic director (the myelin case).
 
@@ -187,7 +181,7 @@ A producer **MAY** define **additional** channels prefixed `x_` (e.g. `x_tempera
 
 These define the meaning of the channels. A **conformant replayer** MUST reproduce these operations (to the decoded arrays' numerical precision). `γ` is the proton gyromagnetic ratio. Every contraction is an integral over time on `[0, T_e]`, `T_e ≤ T_max` the duration of the acquisition (§3), taken over the pieces of the waveform or of the occupancy in closed form; no grid of the pack enters.
 
-The operations split by their dependence on position: the gradient phase (§6.1) and the relaxation/surface log-weights (§6.2–6.3) are **linear** in the stored positions, whereas the off-resonance field-map lookup (§6.4) and the Bloch/MT evolution (§6.5) are **nonlinear**. This is informative only — the signal is identical either way — but it lets a replayer evaluate the position-linear operations directly in the bands' coefficient space without evaluating the trajectory (§9.1; exactness domain §9.2).
+The operations split by their dependence on position: the gradient phase (§6.1) and the relaxation/surface log-weights (§6.2–6.3) are **linear** in the stored positions, whereas the Bloch/MT evolution (§6.5) is **nonlinear** and the off-resonance phase (§6.4) is a per-walker contraction of the field the walk accumulated. This is informative only — the signal is identical either way — but it lets a replayer evaluate the position-linear operations directly in the bands' coefficient space without evaluating the trajectory (§9.1; exactness domain §9.2).
 
 ### 6.1 Gradient phase (Gradient tier — always available)
 
@@ -235,15 +229,7 @@ Because the channel is stored normalized, one walk serves every `ρ`. This is a 
 
 ### 6.4 Static off-resonance / susceptibility (Field tier)
 
-The Field tier stores a set of **normalized off-resonance field-basis maps** the producer precomputes for the substrate. The reference set is `{Φ_0, Φ_C, Φ_S}`: `Φ_0` is the isotropic (m=0) component and `Φ_C, Φ_S` are the ℓ=2 (cylindrically anisotropic) components. Together they represent an **isotropic and/or axially-anisotropic** susceptibility source — not only anisotropic. A fully general rank-2 susceptibility-tensor field is a documented extension requiring a richer basis set (§14).
-
-At replay, for a field strength `B0`, a substrate orientation `θ` relative to `B0`, an azimuth `α`, and the susceptibility scale(s) `Δχ` the maps are normalized to, the off-resonance seen by walker `i` is sampled from the maps at the *wrapped* position `r_i(t) mod cell_size`:
-
-```
-Δω_i(t) = γ · B0 · [ χ_iso · Φ_0(r)  +  χ_aniso · sin²θ · (cos2α·Φ_C(r) + sin2α·Φ_S(r)) ]
-```
-
-`χ_iso` and `χ_aniso` are the isotropic and anisotropic susceptibility scales (the reference implementation exposes the anisotropic scale as `walk_params.delta_chi_a`; a purely isotropic source uses `Φ_0` alone).
+The Field tier stores the off-resonance field basis `b(t)` accumulated along each walker's trajectory by the walk, at the walker's own position (§6.4.1, §9.5.5). **No replay reads a field grid**, and the field is never sampled at the stored positions, which are band-limited (§9.5.4). A field grid MAY accompany a pack as provenance or for visualisation, as a companion artefact or an `x_` channel; it is not a field route, and a pack that carries `susc_field_0`, `susc_field_C` or `susc_field_S` as its field is refused (§9.5.1). A fully general rank-2 susceptibility-tensor field is a documented extension requiring a richer basis set (§14).
 
 The off-resonance contributes to the signal only through the **acquisition's phase history**, which is a replay knob (§6.6). The replayer supplies a transverse-phase gate `s(t)` derived from the pulse sequence, and
 
@@ -251,11 +237,11 @@ The off-resonance contributes to the signal only through the **acquisition's pha
 φ^χ_i = ∫₀^{T_e} s(t) · Δω_i(t) dt ,      φ_i → φ_i + φ^χ_i
 ```
 
-The susceptibility phase adds to the gradient phase inside the *same* exponential, so the diffusion×susceptibility covariance (the cross-term) is preserved. Field strength, orientation, susceptibility scale, and sequence are all knobs; one walk serves any combination. On a band-stored pack the position is the band-limited function of §9.5.4, so the grid route is a quadrature along that path at instants the reader chooses; a pack offering it certifies it in its battery (§9.4 rule 4). The route of §6.4.1 reads the field at the walk's own position and carries no such term.
+with `Δω_i(t)` of §6.4.1. The susceptibility phase adds to the gradient phase inside the *same* exponential, so the diffusion×susceptibility covariance (the cross-term) is preserved. Field strength, orientation, susceptibility scale, and sequence are all knobs; one walk serves any combination.
 
 #### 6.4.1 Per-walker field basis (general representation)
 
-When the field is **not** translationally invariant — an undulating, dispersed, or otherwise irregular 3-D substrate — the ℓ=2 grid maps do not apply, and the producer instead stores the field basis **sampled along each trajectory** in `susc_field_basis` (§5.2). Its 13 components per `(i, k)` are the geometry-only responses `iso_local`, `iso_P[6]`, `aniso_G[6]`. At replay, for a main-field **unit direction** `H = (H_x,H_y,H_z)`, form the symmetric-tensor contraction 6-vector
+The producer stores the field basis accumulated along each trajectory in `susc_field_basis` (§5.2). It carries no invariance assumption: an undulating, dispersed, or otherwise irregular 3-D substrate is served as a straight one. Its 13 components per walker and instant are the geometry-only responses `iso_local`, `iso_P[6]`, `aniso_G[6]`. At replay, for a main-field **unit direction** `H = (H_x,H_y,H_z)`, form the symmetric-tensor contraction 6-vector
 
 ```
 Q(H) = (H_x², H_y², H_z², 2 H_x H_y, 2 H_x H_z, 2 H_y H_z)
@@ -267,7 +253,7 @@ and the off-resonance seen by walker `i` is
 Δω_i(t) = γ · B0 · [ χ_iso · ( iso_local − Q·iso_P )  +  χ_aniso · ( Q·aniso_G ) ]_i(t)
 ```
 
-which feeds the **same** transverse-phase gate and phase accumulation as §6.4 (`φ^χ_i = ∫ s(t)·Δω_i(t) dt`), preserving the cross-term identically. This is the *general* form: the grid-map operation (§6.4) is its special case for a field invariant along a fixed fibre axis, and `Q(H)` supersedes the `sin²θ·(cos2α,sin2α)` factor with the full main-field direction — so **any** B0 orientation is a replay knob, not only the polar sweep. Because the basis is accumulated by the walk, this representation contracts without a field grid at replay; the trade is per-walker storage versus the grid's shared footprint.
+which feeds the **same** transverse-phase gate and phase accumulation as §6.4 (`φ^χ_i = ∫ s(t)·Δω_i(t) dt`), preserving the cross-term identically. `Q(H)` carries the full main-field direction, so **any** B0 orientation is a replay knob. Because the basis is accumulated by the walk, it contracts without a field grid at replay; the cost is per-walker storage.
 
 **The temporal storage of this channel costs reach, not accuracy.** The phase reaches the field only through the gate, `φ^χ_i = ∫ s(t)·Δω_i(t) dt`. The channel is stored as `K` temporal modes (§9.5.3, registry), so it is band-limited **in the gate**, not in the field: by Parseval `∫ s b dt = Σ_k ŝ_k c_k`, the retained modes reproduce `φ^χ` for any `s(t)` inside their band while reproducing `Δω_i(t)` itself poorly, because the field along a trajectory is broadband — the walker crosses μm-scale field structure every step. `K` is thus a **capability**: it bounds the refocusing-pulse density the pack can serve (reference implementation: `K ≥ 2·n_refocus`), and MUST be declared in `replay_envelope` (§9.4 rule 5, §11), never read as "the field is accurate to `K` modes".
 
@@ -325,7 +311,7 @@ Because it stores nothing and changes no replay semantics, it needs no envelope 
 A pack is walked at one diffusivity `D`, one set of wall rates (permeability, surface relaxivity, MT reactivity; m/s) and one size. Two similarities of diffusion let a replayer read the stored walk as a walk of another situation **without decoding and without a new certificate of its own**, because the dimensionless walk -- `sqrt(D Δt) / L`, `kappa L / D`, `rho L / D`, `D T / L^2`, with `L` the smallest feature -- is unchanged. A conformant replayer MAY offer either or both; one that does MUST move every quantity the similarity couples, MUST state the view's own values (its `walk_params.diffusivity`, its embedded `substrate`, its `replay_envelope`), and MUST record the view in `provenance` (§10). A view that moves one quantity alone is a different walk and MUST NOT be presented as the stored one.
 
 - **In time (`a = D' / D`, `a >= 1`).** The bands read on a time axis divided by `a` (`T_max / a`, `h / a`, the band in hertz times `a`) are the walk at `a D`; every permeability and MT reactivity is `a` times the walked value, since the per-encounter probability `kappa sqrt(dt / D)` of the walk's step `dt` is what the path realised; the surface term's rate divides by the new `D` (§6.3). Every length stays. Only `a >= 1` is served: the walk's in-step error goes as `D dt^2` for the step `dt` its step law fixed, which in the view is `D dt^2 / a`, so a stretched time axis (`a < 1`) grows it past what the step law kept below the floor, and a replayer MUST refuse it rather than return it uncertified. The view is shorter, `T_max / a`.
-- **In space (`s = L' / L`, both directions).** Every stored length times `s` -- the positions, the boundary local time (§6.3), the field grid's origin and voxel size (§6.4), the embedded substrate's lengths -- is the walk at `s^2 D` with every wall rate at `s` times the walked value; the block, the duration, the gates, the occupancy and the field values stay (a dipole field depends on shape, not size). The gradient phase of the view at `G` is the stored walk's at `s G` (§6.1), and the surface term at `rho` is the stored walk's at `rho / s`. The certificate was measured over the battery up to `replay_envelope.acquisition.b_max`, so the view's envelope is `b_max / s^2` (and `tissue.rho2_over_D_max / s`), which it MUST state and MUST hold its replays to (§11).
+- **In space (`s = L' / L`, both directions).** Every stored length times `s` -- the positions, the boundary local time (§6.3), the field basis's grid metadata `field_grid` (origin and voxel size, §6.4.1), the embedded substrate's lengths -- is the walk at `s^2 D` with every wall rate at `s` times the walked value; the block, the duration, the gates, the occupancy and the field values stay (a dipole field depends on shape, not size). The gradient phase of the view at `G` is the stored walk's at `s G` (§6.1), and the surface term at `rho` is the stored walk's at `rho / s`. The certificate was measured over the battery up to `replay_envelope.acquisition.b_max`, so the view's envelope is `b_max / s^2` (and `tissue.rho2_over_D_max / s`), which it MUST state and MUST hold its replays to (§11).
 - **Composed.** A target `(L', D', T')` is reached from the walk `(L, D, T_max)` by the space view then the time view when `D' / L'^2 >= D / L^2` and `D' T' / L'^2 <= D T_max / L^2`; the prefix property (§3) serves a shorter acquisition.
 
 ---
@@ -341,7 +327,7 @@ Tiers are named **`C0`–`C4`** (for *capability*) — deliberately not `T#`, wh
 | **C0 Gradient** | *(none)* | §6.1 — any `G(t)`, b-tensor, EAP | `gradient: true` (always) |
 | **C1 Bulk relaxation** | `compartment` (the `comp` column) | §6.2 — any `T2`/`T1`, given per pool at replay | `bulk_relaxation: true` |
 | **C2 Surface** | `boundary_local_time` | §6.3 — any surface relaxivity | `surface_relaxivity: true` |
-| **C3 Field** | `susc_field_{C,S,0}` grid maps (+ `cell_size`) **or** `susc_field_basis` (+ scale) | §6.4 / §6.4.1 — any `B0`, susceptibility, orientation | `field: true` |
+| **C3 Field** | `susc_field_basis` (stored as `susc_path_dct` modes; + `delta_chi_a`, `field_grid`, `field_read_interval`) | §6.4 / §6.4.1 — any `B0`, susceptibility, orientation | `field: true` |
 | **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric `mt{}` pool (§6.5.1) | §6.5 / §6.5.1 — magnetization transfer | `magnetization_transfer: true` |
 
 The declared tier set lives in `replay_envelope` (§10). A replayer asked for a knob outside the declared tiers MUST refuse with a clear "capability not present" error, **not** silently return an approximate result (§11, §13).
@@ -398,7 +384,7 @@ Both are declared in metadata `compression`, both MUST decode to the §5 contrac
 
 ### 9.1 Representation of positions — bands
 
-Positions are stored as the two exact endpoints and `K` bands of the bridge residual on a linear basis, `r = M·c + μ` (a shared basis `M`, per-walker coefficients `c`, §9.5). Because the gradient phase (§6.1) and the separable relaxation/surface log-weights (§6.2–6.3) are **linear** in position, replay is a projection onto `K` coefficients instead of an integral along the path, evaluated without ever reconstructing the trajectory (§6 preamble; mechanics in the registry). The nonlinear operations -- the grid-map susceptibility (§6.4) and Bloch/MT (§6.5) -- evaluate the function at instants first (§9.5.4).
+Positions are stored as the two exact endpoints and `K` bands of the bridge residual on a linear basis, `r = M·c + μ` (a shared basis `M`, per-walker coefficients `c`, §9.5). Because the gradient phase (§6.1) and the separable relaxation/surface log-weights (§6.2–6.3) are **linear** in position, replay is a projection onto `K` coefficients instead of an integral along the path, evaluated without ever reconstructing the trajectory (§6 preamble; mechanics in the registry). The nonlinear operation -- Bloch/MT (§6.5) -- evaluates the function at instants first (§9.5.4).
 
 ### 9.2 Exactness and its domain
 
@@ -445,7 +431,7 @@ A pack stores every running integral on one basis, the continuous sines of §9.5
 
 Every band-stored channel -- C0 positions, C2 contact and C3 field (§9.5.2) -- is on the sine basis of `[0, T]` (`T = T_max`, or the window duration of a window table, §4.3). No metadata field names the basis, because there is no other.
 
-**Refusal.** A reader MUST refuse a pack that carries `n_t` or `dt_traj` (in `walk_params`, in its window table, or anywhere under `compression`), `compression.basis`, the codec `identity`, or any tensor key of the registry's refused list, and MUST name the key it found and give this instruction: *"This pack carries `<key>`, which this revision does not read; re-walk the pack with a conformant producer. A pack is never converted."* A reader MUST NOT decode any tensor of such a pack: a pack on a save grid (`n_t` saves of spacing `dt_traj`, bands on the saves, or positions as raw samples) stores band tensors under the same keys and in the same widths as a pack of this revision, so a coefficient read against the wrong basis is a plausible number and not an error. The metadata schema rejects such a pack, and `examples/conformance_check.py` names the key and gives the instruction.
+**Refusal.** A reader MUST refuse a pack that carries `n_t` or `dt_traj` (in `walk_params`, in its window table, or anywhere under `compression`), `compression.basis`, `walk_params.cell_size` (a field grid offered as a field route), the codec `identity`, or any tensor key of the registry's refused list, and MUST name the key it found and give this instruction: *"This pack carries `<key>`, which this revision does not read; re-walk the pack with a conformant producer. A pack is never converted."* A reader MUST NOT decode any tensor of such a pack: a pack on a save grid (`n_t` saves of spacing `dt_traj`, bands on the saves, or positions as raw samples) stores band tensors under the same keys and in the same widths as a pack of this revision, so a coefficient read against the wrong basis is a plausible number and not an error. The metadata schema rejects such a pack, and `examples/conformance_check.py` names the key and gives the instruction.
 
 #### 9.5.2 Running integrals and the stored vector
 
@@ -611,7 +597,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
             "field": [4.0e-14, 1.0e-14] },              //   local_time iff C2, field iff susc_field_basis
     "field_read_interval": 2.0e-6,       // s; REQUIRED iff susc_field_basis (§9.5.5)
     "boundary": "periodic",              // OPTIONAL "periodic" | "reflecting" | "finite";
-                                         //   sets grid-map sampling (§4.5) + bounds the envelope
+                                         //   the walk's box (§4.5) + bounds the envelope
                                          //   (a finite box restricts long-diffusion-time replays);
                                          //   default "periodic"
     "substrate_frame": [[1,0,0],[0,1,0],[0,0,1]],  // OPTIONAL 3x3 orthonormal, right-handed frame
@@ -620,8 +606,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
                                          //   = a FIXED perpendicular basis (no free rotation about the
                                          //   fibre). A canonical direction maps to stored as R·d.
                                          //   Omit => identity (positions already canonical).
-    "cell_size": 5e-6,                   // m, field-map grid spacing; present iff Field grid maps
-    "delta_chi_a": -0.1e-6,              // anisotropic susceptibility scale the Field basis/maps
+    "delta_chi_a": -0.1e-6,              // anisotropic susceptibility scale the Field basis
                                          //   are normalized to; present iff Field tier
     "field_grid": {                      // present iff `susc_field_basis` (§6.4.1); how it was built
       "origin": [0,0,0], "voxel_size": [2e-7,2e-7,2e-7],   // m
@@ -642,7 +627,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
     "gradient": true,                    // C0 — always true
     "bulk_relaxation": true,             // C1 — intrinsic per-compartment T1/T2
     "surface_relaxivity": false,         // C2 — any surface relaxivity
-    "field": true,                       // C3 — any B0 / susceptibility off-resonance; orientation too when the ℓ=2 maps are present
+    "field": true,                       // C3 — any B0 / susceptibility off-resonance and orientation
     "magnetization_transfer": false,     // C4 — magnetization transfer (vector-Bloch)
     "diffusivity_fixed": true,           // D is a fixed pack property, not a knob
     "acquisition": { "b_max": 3.0e9, "ogse_periods": [], "B0_list": [3.0, 7.0],
@@ -684,7 +669,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
 }
 ```
 
-Rules: `pack_license` is the licence of the pack file itself, as an SPDX expression, and `pack_license_url` where its full text lives; absent, the pack is distributed under `license`, the source substrate's. `diffusivity` and `seed` are fixed pack properties, not knobs; a similarity view (§6.8) states the diffusivity it realises and records the walked one under `provenance`. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `walk_params` fields populated. A tier with two representations is satisfied by **either** one: C3 (`field`) by the `susc_field_{0,C,S}` grid maps **or** the `susc_field_basis` channel (+ `walk_params.field_grid`); C4 (`magnetization_transfer`) by the C1 `bound` occupancy column **or** the `mt` pool descriptor. The envelope flags use explicit, self-describing names; across the `0.x` line a reader SHOULD also accept the aliases `T1T2`/`relaxation→bulk_relaxation`, `rho→surface_relaxivity`, `B0_any`/`orientation_any`/`field_offresonance`/`field_orientation→field`, `mt→magnetization_transfer` (and ignore the retired `rf`/`permeability` flags). The substrate bank derives its catalog card from `provenance` and the optional Croissant sidecar (§12); the card's layout is the bank's concern, outside this format.
+Rules: `pack_license` is the licence of the pack file itself, as an SPDX expression, and `pack_license_url` where its full text lives; absent, the pack is distributed under `license`, the source substrate's. `diffusivity` and `seed` are fixed pack properties, not knobs; a similarity view (§6.8) states the diffusivity it realises and records the walked one under `provenance`. `license` records the **source substrate's** license and MUST NOT relicense upstream geometry. Any tier flag set `true` in `replay_envelope` MUST have its channels present (§7) and its `walk_params` fields populated. C3 (`field`) is carried by the `susc_field_basis` channel (+ `walk_params.field_grid`, `field_read_interval`); C4 (`magnetization_transfer`) by the C1 `bound` occupancy column **or** the `mt` pool descriptor, either one satisfying the flag. The envelope flags are `gradient`, `bulk_relaxation`, `surface_relaxivity`, `field`, `magnetization_transfer` and `diffusivity_fixed`, each under that name only. The substrate bank derives its catalog card from `provenance` and the optional Croissant sidecar (§12); the card's layout is the bank's concern, outside this format.
 
 ---
 
@@ -702,7 +687,7 @@ The substrate bank (a separate service) accepts a pack by validating it against 
 ## 12. Container format
 
 - **Arrays:** a single **safetensors** file. Safetensors is REQUIRED because it (a) carries **no executable code** — a pack is safe to download and memory-map from untrusted sources — (b) is strongly typed, and (c) is zero-copy. A channel's tensor keys are those the registry defines for its method (`CODEC_REGISTRY.md`).
-- **Metadata:** the JSON object of §10, serialized as a single string and stored in the safetensors `__metadata__` header under the key **`"rpk"`**. Producers MUST write it there; a sibling `.json` copy is OPTIONAL for human inspection. Across the `0.x` line a reader MUST also accept the header key `"json"`; producers SHOULD write `"rpk"`.
+- **Metadata:** the JSON object of §10, serialized as a single string and stored in the safetensors `__metadata__` header under the key **`"rpk"`**. Producers MUST write it there and readers read it from there; a sibling `.json` copy is OPTIONAL for human inspection.
 - **Dataset sidecar (OPTIONAL):** a Croissant (`schema.org/Dataset` + MLCommons) `.croissant.jsonld` carrying `license`, `citation`, `provenance`, and `replay_envelope` for dataset-catalog interoperability.
 - **Extension:** `.rpk`. **Naming:** the file basename SHOULD equal the last path segment of `id`.
 
@@ -749,7 +734,7 @@ Conformance is layered: a producer MAY implement only C0; a replayer MAY impleme
 
 ## 15. Security considerations
 
-A pack carries data only. Safetensors executes no code on load, and the metadata and Croissant sidecar are inert JSON. Replayers MUST NOT `eval`/`exec` any pack content. Field-map and band arrays are bounded numeric data; a replayer SHOULD sanity-check shapes against `walk_params` before allocating.
+A pack carries data only. Safetensors executes no code on load, and the metadata and Croissant sidecar are inert JSON. Replayers MUST NOT `eval`/`exec` any pack content. Field-basis and band arrays are bounded numeric data; a replayer SHOULD sanity-check shapes against `walk_params` before allocating.
 
 ---
 

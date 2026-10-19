@@ -64,7 +64,7 @@ Everything follows from this invariant. Two things the spec states up front:
 | **C0 Gradient** | `positions` (required) | any `G(t)` within the band, b-tensor, EAP |
 | **C1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **C2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
-| **C3 Field** | `susc_field_{C,S,0}` grid maps **or** `susc_field_basis` (per-walker, any 3-D morphology) | any `B0`, susceptibility, orientation |
+| **C3 Field** | `susc_field_basis` (per-walker, accumulated at the walker's position, any 3-D morphology) | any `B0`, susceptibility, orientation |
 | **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack

@@ -96,7 +96,7 @@
             "finite",
             null
           ],
-          "description": "Simulation-box boundary (SPEC \u00a74.5): sets Field grid-map sampling (wrapped for periodic, clamped otherwise) and bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."
+          "description": "The walk's box (SPEC \u00a74.5): periodic, reflecting or finite; bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."
         },
         "substrate_frame": {
           "type": [
@@ -115,19 +115,12 @@
           "maxItems": 3,
           "description": "Intrinsic orientation frame R, a 3x3 orthonormal right-handed matrix (SPEC \u00a74.2). Columns are the canonical substrate basis in stored coordinates: column 3 (z) = primary axis (fibre), columns 1-2 = a fixed perpendicular basis (no free rotation about the fibre). A canonical direction maps to stored coordinates as R*d. Omit (or null) => identity: positions are already in the canonical frame. B0/gradient directions are defined relative to this frame."
         },
-        "cell_size": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "description": "Field-map grid spacing (m); present iff Field grid maps (susc_field_{0,C,S})."
-        },
         "delta_chi_a": {
           "type": [
             "number",
             "null"
           ],
-          "description": "Anisotropic susceptibility scale the Field basis/maps are normalized to (SPEC \u00a76.4); present iff Field tier. A purely isotropic source uses susc_field_0 / iso terms alone."
+          "description": "Anisotropic susceptibility scale the Field basis is normalized to (SPEC \u00a76.4.1); present iff Field tier."
         },
         "field_grid": {
           "type": [
@@ -258,10 +251,15 @@
             "required": [
               "dt_traj"
             ]
+          },
+          {
+            "required": [
+              "cell_size"
+            ]
           }
         ]
       },
-      "description": "walk_params. A pack carrying n_t or dt_traj here, in its window table or under compression is REFUSED (SPEC \u00a79.5.1): re-walk it; a pack is never converted."
+      "description": "walk_params. A pack carrying n_t or dt_traj here, in its window table or under compression, or cell_size (a field grid as a field route), is REFUSED (SPEC \u00a79.5.1): re-walk it; a pack is never converted."
     },
     "substrate": {
       "type": [
@@ -388,7 +386,7 @@
         "gradient",
         "diffusivity_fixed"
       ],
-      "description": "Declared capability tiers and acquisition domain (SPEC \u00a77/\u00a711). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 0.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
+      "description": "Declared capability tiers and acquisition domain (SPEC \u00a77/\u00a711). A flagged tier MUST have its channels present. The flags are exactly gradient, bulk_relaxation, surface_relaxivity, field, magnetization_transfer, diffusivity_fixed.",
       "additionalProperties": true,
       "properties": {
         "gradient": {
@@ -405,7 +403,7 @@
         },
         "field": {
           "type": "boolean",
-          "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale), and orientation relative to B0. Carried by EITHER the shared l=2 grid maps susc_field_{0,C,S} (SPEC \u00a76.4) OR the per-walker susc_field_basis channel (SPEC \u00a76.4.1, arbitrary 3-D morphology, full main-field direction)."
+          "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale, any orientation relative to B0). Carried by the per-walker susc_field_basis channel, stored as susc_path_dct modes (SPEC \u00a76.4.1)."
         },
         "magnetization_transfer": {
           "type": "boolean",

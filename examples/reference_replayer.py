@@ -23,8 +23,7 @@ def load_rpk(path):
         hdr = f.metadata() or {}
         for k in f.keys():
             arrays[k] = f.get_tensor(k)
-    blob = hdr.get("rpk") or hdr.get("json")   # canonical header key is "rpk" (SPEC §12)
-    meta = json.loads(blob) if blob else dict(hdr)
+    meta = json.loads(hdr["rpk"])              # the header key is "rpk" (SPEC §12)
     return arrays, meta
 
 
@@ -99,7 +98,7 @@ def replay_relaxation_logweight(arrays, meta, T2, T_e=None):
     Requires the Bulk-relaxation tier. `T2` is a sequence indexed by pool id (a replay knob,
     SPEC §8.5). Returns (N_w,) log-weights (<=0)."""
     env = meta.get("replay_envelope", {})
-    if not (env.get("bulk_relaxation") or env.get("relaxation") or env.get("T1T2")):
+    if not env.get("bulk_relaxation"):
         raise ValueError("pack does not declare the Bulk-relaxation tier; "
                          "capability not present (SPEC §7/§13).")
     T2 = np.asarray(T2, float)

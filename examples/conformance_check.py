@@ -30,24 +30,20 @@ CHANNEL_KEYS = {
     "boundary_local_time": [["blt_bridge_dst", "blt_start", "blt_endpoint"],
                             ["blt_band_scale", "blt_start", "blt_endpoint"]],
     "spin_weights": [["spin_weights"]],
-    "susc_field_0": [["susc_field_0"]],
-    "field": [["susc_field_0"], ["susc_path_dct", "susc_path_scale"]],
+    "field": [["susc_path_dct", "susc_path_scale"]],
 }
 TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MUST be present
     "bulk_relaxation": ["compartment"],
     "surface_relaxivity": ["boundary_local_time"],
     "magnetization_transfer": ["bound"],      # or the parametric `mt` descriptor
-    "field": ["field"],                       # grid maps (Phi_0 minimum) or the path modes
+    "field": ["field"],                       # the path modes (SPEC §6.4.1)
 }
-# envelope-flag aliases accepted on read (SPEC §10)
-ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
-               "rho": "surface_relaxivity", "B0_any": "field", "orientation_any": "field",
-               "field_offresonance": "field", "field_orientation": "field",
-               "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
 RETIRED_CODECS = {"temporal_dct", "lowrank", "gaussian", "marginal"}
 # Refused tensors (registry, "Refused forms"): each belongs to a form this revision does not read.
 REFUSED_KEYS = {
+    "susc_field_0": "a field grid as a field route", "susc_field_C": "a field grid as a field route",
+    "susc_field_S": "a field grid as a field route",
     "positions": "raw positions on a save grid",
     "compartment": "the occupancy sampled on a save grid",
     "boundary_local_time": "the contact sampled on a save grid",
@@ -68,15 +64,6 @@ INSTRUCTION = ("this revision does not read it: re-walk the pack with a conforma
 def _present(channel, keys):
     """True iff `channel` is realized by any registry key-group present in `keys`."""
     return any(all(k in keys for k in group) for group in CHANNEL_KEYS.get(channel, [[channel]]))
-
-
-def _norm_env(meta):
-    """replay_envelope with the aliases folded onto the explicit names (SPEC §10)."""
-    env = dict(meta.get("replay_envelope", {}))
-    for old, new in ENV_ALIASES.items():
-        if old in env and new not in env:
-            env[new] = env[old]
-    return env
 
 
 def _walk(obj, path=""):
@@ -103,6 +90,8 @@ def refusals(meta, keys):
     for path, k in _walk(comp, "compression"):
         if k == "n_t" or path == "compression.basis":
             out.append(f"{path} is present: {INSTRUCTION}")
+    if "cell_size" in wp:
+        out.append(f"walk_params.cell_size is present (a field grid as a field route): {INSTRUCTION}")
     if "per_comp" in meta:
         out.append("per_comp is present (a pack stores no tissue value, SPEC §8.5): re-walk the pack")
     method = comp.get("method")
@@ -130,12 +119,10 @@ def check(path):
     except Exception as e:
         return [f"not a readable safetensors file: {e}"], []
 
-    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" is the canonical key
+    blob = hdr.get("rpk")
     if not blob:
-        return ["__metadata__ has no 'rpk' (or 'json') JSON blob (SPEC §12)"], []
+        return ["__metadata__ has no 'rpk' JSON blob (SPEC §12)"], []
     meta = json.loads(blob)
-    if "rpk" not in hdr and "json" in hdr:
-        warns.append("metadata under header key 'json'; SHOULD write 'rpk' (SPEC §12)")
 
     # 1. the refusals of §9.5.1 come first: nothing of a refused pack is read.
     ref = refusals(meta, keys)
@@ -193,8 +180,8 @@ def check(path):
     if n_w is not None and wp.get("n_walkers") not in (None, n_w):
         errs.append(f"walk_params.n_walkers {wp.get('n_walkers')} != N_w {n_w} of positions")
 
-    # 5. tier flag => channels present (explicit names + aliases)
-    env = _norm_env(meta)
+    # 5. tier flag => channels present
+    env = meta.get("replay_envelope", {})
     for flag, chans in TIER_CHANNELS.items():
         if env.get(flag):
             if flag == "magnetization_transfer" and meta.get("mt"):
@@ -207,8 +194,6 @@ def check(path):
             errs.append("susc_path_dct without walk_params.qv.field and field_read_interval (SPEC §9.5.5)")
         if (env.get("acquisition") or {}).get("max_refocusing_pulses") is None:
             errs.append("susc_path_dct without replay_envelope.acquisition.max_refocusing_pulses (SPEC §9.4 rule 5)")
-    if env.get("field") and "susc_field_0" in keys and wp.get("cell_size") is None:
-        errs.append("field tier declared with grid maps but walk_params.cell_size absent (SPEC §7)")
 
     # 6. distributional codec MUST NOT carry per-walker channels (SPEC §9.4)
     if keys & DISTRIBUTIONAL_KEYS:
@@ -270,8 +255,8 @@ def main(path):
     errs, warns = check(path)
     with safe_open(path, framework="numpy") as f:
         _h = f.metadata() or {}
-        meta = json.loads(_h.get("rpk") or _h.get("json") or "{}")
-    env = _norm_env(meta)
+        meta = json.loads(_h.get("rpk") or "{}")
+    env = meta.get("replay_envelope", {})
     tiers = [name for name, on in [
         ("C0-Gradient", env.get("gradient")), ("C1-BulkRelax", env.get("bulk_relaxation")),
         ("C2-Surface", env.get("surface_relaxivity")), ("C3-Field", env.get("field")),

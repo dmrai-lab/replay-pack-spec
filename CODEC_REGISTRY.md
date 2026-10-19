@@ -38,7 +38,6 @@ tensor of samples on a grid.
 | `spin_weights` | `spin_weights` `(N_w,)` |
 | `compartment` | per column: `comp_static` `(N_w,)`, or `comp_events_offsets`, `comp_events_t`, `comp_events_label`; the `bound` column the same under `bound_` |
 | `boundary_local_time` | `blt_bridge_dst`, `blt_start`, `blt_endpoint`, or the integer band container |
-| `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` (shared grid maps) |
 | `susc_field_basis` | `susc_path_dct` `(N_w, n_ch, K)` and `susc_path_scale` |
 
 ### Position representation
@@ -109,6 +108,7 @@ A reader MUST refuse, by name and with the instruction to re-walk (SPEC §9.5.1)
 - the metadata keys `n_t` or `dt_traj` (in `walk_params`, its window table, or anywhere under `compression`) or `compression.basis`;
 - the codec `identity`, and the tensors that go with it: `positions`, `compartment`, `boundary_local_time`, `susc_field_basis`, `dlog_boundary_unit`;
 - the occupancy and contact forms on a grid: `comp_rle_vals`/`comp_rle_lens`/`comp_rle_counts`, `bound_rle_*`, `blt_counts`/`blt_cols`/`blt_qvals`, `blt_dense_q`, and any `<name>_rle_*`;
+- the field grid as a field route: the tensors `susc_field_0`, `susc_field_C`, `susc_field_S` and the metadata key `walk_params.cell_size`;
 - the retired position codecs `temporal_dct`, `lowrank`, `gaussian` and `marginal` (`dct_coeffs`, `modes`), the retired `blt_dct_coeffs`, and the retired `bfrac_rle_*` keys of MT as a channel of its own (it is the `bound` column of `compartment`, SPEC §5.2, §6.5).
 
 This is a refusal rather than a conversion because the failure would otherwise be silent: the band tensors
@@ -174,10 +174,7 @@ implementation's measured requirement is `K ≥ 2·n_refocus`. A pack using this
 and its `fidelity` battery MUST include a refocused (spin-echo / CPMG) acquisition — the small-difference
 cancellation a truncated Field basis breaks first.
 
-**Do not ship the §6.4 grid maps in the same pack as this codec.** The grid route samples the field at the
-band-limited decoded path, a quadrature at the band's resolution; the path route accumulates it at the walk's own
-position. Advertising both offers a replay route whose accuracy depends on a property the pack no longer has.
-Ship the grid as a per-substrate companion artefact instead, and record which route the pack offers.
+**No field grid is a field route.** The field is accumulated at the walk's own position and shipped as `susc_path_dct` only. A field grid MAY accompany a pack as a companion artefact or an `x_` channel, as provenance or for visualisation; no replay reads it.
 
 ## Replay in coefficient space (the representation mechanics)
 
@@ -199,16 +196,14 @@ trajectory. The per-compartment relaxation (§6.2) and surface-relaxivity (§6.3
 separable per-walker quantities (a sum over the runs of the occupancy; a difference of two reads of `B(t)`)
 that need no position decode.
 
-The **grid-map** off-resonance/susceptibility operation (§6.4) samples a field map at
-`r mod cell_size` — a **nonlinear** function of position — and the **Bloch/MT** operation (§6.5)
-evolves magnetization over time; both REQUIRE the position evaluated at instants (SPEC §9.5.4). A replayer therefore
-takes the coefficient-space path for the position-linear tiers (Gradient, Bulk-relaxation,
-Surface) and evaluates the function at instants for the grid-map Field and Magnetization-transfer
-tiers. (The **per-walker** Field basis of §6.4.1 is the exception: it is *accumulated* per walker, so its phase is a per-walker
-separable sum — like the surface log-weight — needing **no** position decode, and it composes with the
-coefficient-space path. Under `susc_path_dct` the sum is itself a coefficient-space contraction,
-`∫ s(t)·b(t) dt = Σ_m ŝ_m c_m`, so the scalar-phase route never materializes `b(t)` either; the Bloch route does.)
-This is one reason for the representation: it is not only compact but directly replayable (SPEC §9.1).
+The **Bloch/MT** operation (§6.5) evolves magnetization over time and REQUIRES the position evaluated at
+instants (SPEC §9.5.4). A replayer therefore takes the coefficient-space path for the position-linear tiers
+(Gradient, Bulk-relaxation, Surface) and evaluates the function at instants for the Magnetization-transfer tier.
+The **per-walker** Field basis of §6.4.1 is *accumulated* per walker, so its phase is a per-walker separable sum --
+like the surface log-weight -- needing **no** position decode, and it composes with the coefficient-space path.
+Under `susc_path_dct` the sum is itself a coefficient-space contraction, `∫ s(t)·b(t) dt = Σ_m ŝ_m c_m`, so the
+scalar-phase route never materializes `b(t)` either; the Bloch route does. This is one reason for the
+representation: it is not only compact but directly replayable (SPEC §9.1).
 
 ## Adding a codec
 
