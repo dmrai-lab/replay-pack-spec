@@ -299,7 +299,7 @@
             "array",
             "null"
           ],
-          "description": "The integer band container of the position bridge (registry 0.6): the band ranges covering 0..K-1, each {bands: [k0, k1], bits: 16 or 8}. null / absent: the float32 container (pos_x, pos_y, pos_z).",
+          "description": "The integer band container of the position bridge (registry 0.6): the band ranges covering 0..K-1, each {bands: [k0, k1], bits} with bits in 3..16 (8 and 16 native, the others bit-packed, registry 0.7). null / absent: the float32 container (pos_x, pos_y, pos_z).",
           "items": {
             "type": "object",
             "required": [
@@ -317,10 +317,9 @@
               },
               "bits": {
                 "type": "integer",
-                "enum": [
-                  8,
-                  16
-                ]
+                "minimum": 3,
+                "maximum": 16,
+                "description": "The depth of the range: 8 and 16 are native int8 / int16 tensors, every other depth a bit-packed uint8 row (registry 0.7)."
               }
             }
           }
