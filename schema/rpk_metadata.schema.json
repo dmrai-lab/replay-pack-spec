@@ -144,10 +144,9 @@
         },
         "windows": {
           "type": "object",
-          "description": "OPTIONAL storage windows (SPEC \u00a74.3): the walk stored as n consecutive windows of n_t saves, T seconds each, sharing their boundary saves; window i >= 1's tensors under the prefix s{i}/. Absent: one window.",
+          "description": "OPTIONAL storage windows (SPEC \u00a74.3): the walk stored as n consecutive windows of T seconds each (n_t saves each when the pack is on a save grid), sharing their boundary instants; window i >= 1's tensors under the prefix s{i}/. Absent: one window.",
           "required": [
             "n",
-            "n_t",
             "T"
           ],
           "properties": {
