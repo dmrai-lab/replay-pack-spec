@@ -141,6 +141,49 @@
               "description": "How the susceptibility phase gate s(t_k) is applied at replay (SPEC \u00a76.6)."
             }
           }
+        },
+        "windows": {
+          "type": "object",
+          "description": "OPTIONAL storage windows (SPEC \u00a74.3): the walk stored as n consecutive windows of T seconds each (n_t saves each when the pack is on a save grid), sharing their boundary instants; window i >= 1's tensors under the prefix s{i}/. Absent: one window.",
+          "required": [
+            "n",
+            "T"
+          ],
+          "properties": {
+            "n": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "n_t": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "T": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "walks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "first",
+                  "last"
+                ],
+                "properties": {
+                  "first": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "last": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "seed": {}
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -333,6 +376,16 @@
               "type": "number",
               "minimum": 0
             }
+          }
+        },
+        "windows": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "OPTIONAL: one certificate per storage window (SPEC \u00a74.3); the whole's numbers are the bound over them.",
+          "items": {
+            "type": "object"
           }
         }
       }
