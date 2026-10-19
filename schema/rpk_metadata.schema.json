@@ -507,6 +507,11 @@
               "minimum": 0,
               "description": "The field read: 0.5 * (gamma B0 chi)^2 2 D T_e |grad b|^2 dt_f^2, the largest over the battery. REQUIRED iff walk_params.field_read_interval is present."
             },
+            "rounding": {
+              "type": "number",
+              "minimum": 0,
+              "description": "The rounding of a float32 accumulation across blocks: r * sqrt(2 b_max D), r the measured relative residual of the chain (the k = 0 mode against the exact displacement, the largest over the walkers). REQUIRED iff walk_params.block.precision is \"float32\"."
+            },
             "truncation_from": {
               "type": "string",
               "enum": [
@@ -659,6 +664,45 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "required": [
+          "walk_params"
+        ],
+        "properties": {
+          "walk_params": {
+            "required": [
+              "block"
+            ],
+            "properties": {
+              "block": {
+                "properties": {
+                  "precision": {
+                    "const": "float32"
+                  }
+                },
+                "required": [
+                  "precision"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "fidelity": {
+            "properties": {
+              "terms": {
+                "required": [
+                  "rounding"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     {
       "if": {
         "required": [
