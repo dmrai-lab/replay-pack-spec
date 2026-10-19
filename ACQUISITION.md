@@ -110,8 +110,8 @@ sequence. **One acquisition has one RF schedule and one echo time**; a scheme wi
 
 ### 3.1 The grid
 
-The grid is `t_k = k·dt`, `k = 0 .. n_t − 1`. Sample `k` acts over the step `[k·dt, (k+1)·dt)`: a walker's
-phase over that step is `γ·dt·G_eff[k]·r_k` (`RPK.md` §6.1). Consequently **the readout sample `n_t − 1`
+The grid is `t_k = k·dt`, `k = 0 .. n_t − 1`. Sample `k` acts over the step `[k·dt, (k+1)·dt)`: the replay
+integrates it against the walker's position over that step, in closed form (`RPK.md` §6.1). Consequently **the readout sample `n_t − 1`
 acts over nothing** -- it is the instant the signal is read -- and a conformant builder leaves it at zero.
 A shape (§6.1) is sampled at the **middle** of each step, `(k + ½)·dt`, so that a lobe rasterises
 symmetrically however short its ramps.

@@ -10,6 +10,7 @@
     "walk_params",
     "compression",
     "replay_envelope",
+    "fidelity",
     "license",
     "citation"
   ],
@@ -31,27 +32,19 @@
         "n_walkers",
         "T_max",
         "diffusivity",
-        "seed"
+        "seed",
+        "block",
+        "qv"
       ],
       "properties": {
         "n_walkers": {
           "type": "integer",
           "minimum": 1
         },
-        "n_t": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Number of saves (SPEC \u00a74.3). REQUIRED on a pack whose bands are on the saves (compression.basis absent or 'dst1'); absent on a 'continuous' pack, which has no saves (SPEC \u00a79.5.6)."
-        },
-        "dt_traj": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Save interval (s). REQUIRED with n_t; absent on a 'continuous' pack (SPEC \u00a79.5.6)."
-        },
         "T_max": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Duration of the stored walk (s): (n_t-1)*dt_traj on the saves; on a 'continuous' pack, the T of its basis on [0, T] (SPEC \u00a79.5.3)."
+          "description": "Duration of the stored walk (s): the T of the sine basis on [0, T] (SPEC \u00a74.3, \u00a79.5.3)."
         },
         "diffusivity": {
           "type": [
@@ -65,7 +58,7 @@
         },
         "block": {
           "type": "object",
-          "description": "The block accumulation of a 'continuous' pack (SPEC \u00a79.5.5): REQUIRED iff compression.basis is 'continuous', absent otherwise. A constant of the pack, fixed at walk time, never a replay knob; its quadrature error is carried by fidelity.terms.quadrature.",
+          "description": "The block accumulation of the pack (SPEC \u00a79.5.5): REQUIRED. A constant of the pack, fixed at walk time, never a replay knob; its quadrature error is carried by fidelity.terms.quadrature.",
           "required": [
             "h",
             "m",
@@ -103,7 +96,7 @@
             "finite",
             null
           ],
-          "description": "Simulation-box boundary (SPEC \u00a74.5): sets Field grid-map sampling (wrapped for periodic, clamped otherwise) and bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."
+          "description": "The walk's box (SPEC \u00a74.5): periodic, reflecting or finite; bounds the envelope (a finite box restricts long-diffusion-time replays). Default 'periodic'."
         },
         "substrate_frame": {
           "type": [
@@ -122,19 +115,12 @@
           "maxItems": 3,
           "description": "Intrinsic orientation frame R, a 3x3 orthonormal right-handed matrix (SPEC \u00a74.2). Columns are the canonical substrate basis in stored coordinates: column 3 (z) = primary axis (fibre), columns 1-2 = a fixed perpendicular basis (no free rotation about the fibre). A canonical direction maps to stored coordinates as R*d. Omit (or null) => identity: positions are already in the canonical frame. B0/gradient directions are defined relative to this frame."
         },
-        "cell_size": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "description": "Field-map grid spacing (m); present iff Field grid maps (susc_field_{0,C,S})."
-        },
         "delta_chi_a": {
           "type": [
             "number",
             "null"
           ],
-          "description": "Anisotropic susceptibility scale the Field basis/maps are normalized to (SPEC \u00a76.4); present iff Field tier. A purely isotropic source uses susc_field_0 / iso terms alone."
+          "description": "Anisotropic susceptibility scale the Field basis is normalized to (SPEC \u00a76.4.1); present iff Field tier."
         },
         "field_grid": {
           "type": [
@@ -172,19 +158,16 @@
         },
         "windows": {
           "type": "object",
-          "description": "OPTIONAL storage windows (SPEC \u00a74.3): the walk stored as n consecutive windows of T seconds each (n_t saves each when the pack is on a save grid), sharing their boundary instants; window i >= 1's tensors under the prefix s{i}/. Absent: one window.",
+          "description": "OPTIONAL storage windows (SPEC \u00a74.3): the walk stored as n consecutive windows of T seconds each, sharing their boundary instants; window i >= 1's tensors under the prefix s{i}/. Absent: one window.",
           "required": [
             "n",
-            "T"
+            "T",
+            "walks"
           ],
           "properties": {
             "n": {
               "type": "integer",
               "minimum": 1
-            },
-            "n_t": {
-              "type": "integer",
-              "minimum": 2
             },
             "T": {
               "type": "number",
@@ -211,9 +194,72 @@
                 }
               }
             }
+          },
+          "not": {
+            "required": [
+              "n_t"
+            ]
           }
+        },
+        "qv": {
+          "type": "object",
+          "description": "The quadratic variation of each channel's running integral, QV = sum (dI)^2 over the walk's increments, averaged over the walkers (SPEC \u00a79.5.5). REQUIRED. positions: [QV_x, QV_y, QV_z] in m^2 (free diffusion: 2 D T); local_time: sum d(ell)^2 in m^2, present iff boundary_local_time is; field: one sum (b dt_f)^2 in s^2 per component of susc_field_basis, in the order of compression.channels.susc_field_basis.channels, present iff susc_field_basis is.",
+          "required": [
+            "positions"
+          ],
+          "properties": {
+            "positions": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "QV of r(t) per axis (m^2)."
+            },
+            "local_time": {
+              "type": "number",
+              "minimum": 0,
+              "description": "QV of the cumulative boundary local time at rho/D = 1 (m^2); iff C2."
+            },
+            "field": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "minItems": 1,
+              "description": "QV of F(t) = int b dt per component of susc_field_basis (s^2); iff the field channel is present."
+            }
+          }
+        },
+        "field_read_interval": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "The interval dt_f (s) between the walk's reads of the field at the walker's own position (SPEC \u00a79.5.5). REQUIRED iff susc_field_basis is present; it fixes fidelity.terms.field_read."
         }
-      }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "n_t"
+            ]
+          },
+          {
+            "required": [
+              "dt_traj"
+            ]
+          },
+          {
+            "required": [
+              "cell_size"
+            ]
+          }
+        ]
+      },
+      "description": "walk_params. A pack carrying n_t or dt_traj here, in its window table or under compression, or cell_size (a field grid as a field route), is REFUSED (SPEC \u00a79.5.1): re-walk it; a pack is never converted."
     },
     "substrate": {
       "type": [
@@ -230,9 +276,11 @@
       "properties": {
         "method": {
           "type": "string",
-          "description": "Codec name. 'identity' = raw. Walker-preserving codecs required alongside per-walker channels.",
+          "not": {
+            "const": "identity"
+          },
+          "description": "Codec name (CODEC_REGISTRY.md). 'identity' does not exist: a pack is bands (SPEC \u00a79.5.1). Walker-preserving codecs required alongside per-walker channels.",
           "examples": [
-            "identity",
             "bridge_dst"
           ]
         },
@@ -245,14 +293,6 @@
         },
         "walker_preserving": {
           "type": "boolean"
-        },
-        "basis": {
-          "type": "string",
-          "enum": [
-            "dst1",
-            "continuous"
-          ],
-          "description": "The basis of the band-stored channels (SPEC \u00a79.5). 'dst1': the orthonormal DST-I of the bridge residual on the n_t-2 interior saves (C3: the DCT-II of the per-save series); the default when absent. 'continuous': s_k(t) = sqrt(2/T) sin(pi k t/T) on [0, T], bands beta_k = int u s_k dt of the bridge residual; the pack has no n_t and no dt_traj, requires walk_params.block, and certifies fidelity.terms."
         },
         "container": {
           "type": [
@@ -284,8 +324,61 @@
               }
             }
           }
+        },
+        "temporal_bandwidth_hz": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "description": "K / (2 T_max): the band as a frequency (SPEC \u00a79.4 rule 6). RECOMMENDED."
+        },
+        "channels": {
+          "type": "object",
+          "description": "Per-channel codec parameters (registry). No descriptor carries n_t.",
+          "additionalProperties": {
+            "type": "object",
+            "not": {
+              "required": [
+                "n_t"
+              ]
+            }
+          },
+          "properties": {
+            "compartment": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "not": {
+                      "required": [
+                        "n_t"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
-      }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "basis"
+            ]
+          },
+          {
+            "required": [
+              "n_t"
+            ]
+          }
+        ]
+      },
+      "description": "Codec descriptor. A pack carrying compression.basis or an n_t is REFUSED (SPEC \u00a79.5.1): there is one basis, named by no field."
     },
     "replay_envelope": {
       "type": "object",
@@ -293,12 +386,12 @@
         "gradient",
         "diffusivity_fixed"
       ],
-      "description": "Declared capability tiers and acquisition domain (SPEC \u00a77/\u00a711). A flagged tier MUST have its channels present. Flags use explicit self-describing names; readers SHOULD also accept the 0.x aliases T1T2/relaxation->bulk_relaxation, rho->surface_relaxivity, B0_any/orientation_any/field_offresonance/field_orientation->field, mt->magnetization_transfer.",
+      "description": "Declared capability tiers and acquisition domain (SPEC \u00a77/\u00a711). A flagged tier MUST have its channels present. The flags are exactly gradient, bulk_relaxation, surface_relaxivity, field, magnetization_transfer, diffusivity_fixed.",
       "additionalProperties": true,
       "properties": {
         "gradient": {
           "const": true,
-          "description": "T0: replays any gradient waveform, b-tensor, EAP. Always true."
+          "description": "C0: replays any gradient waveform, b-tensor, EAP. Always true."
         },
         "bulk_relaxation": {
           "type": "boolean",
@@ -310,7 +403,7 @@
         },
         "field": {
           "type": "boolean",
-          "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale), and orientation relative to B0. Carried by EITHER the shared l=2 grid maps susc_field_{0,C,S} (SPEC \u00a76.4) OR the per-walker susc_field_basis channel (SPEC \u00a76.4.1, arbitrary 3-D morphology, full main-field direction)."
+          "description": "C3: replays static off-resonance / susceptibility (any B0 and susceptibility scale, any orientation relative to B0). Carried by the per-walker susc_field_basis channel, stored as susc_path_dct modes (SPEC \u00a76.4.1)."
         },
         "magnetization_transfer": {
           "type": "boolean",
@@ -362,16 +455,13 @@
       }
     },
     "fidelity": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "description": "Required iff any lossy codec (SPEC \u00a79). Codec-agnostic trust certificate: the decoded-vs-raw replay error, whatever codec produced it. Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
+      "type": "object",
+      "description": "REQUIRED (SPEC \u00a79.4 rule 4). Codec-agnostic trust certificate: the replay error against a reference replay of the same acquisition, and its bounded terms. Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
       "properties": {
         "err_max": {
           "type": "number",
           "minimum": 0,
-          "description": "Worst-case decoded-vs-raw replay error over `battery`."
+          "description": "Worst-case replay error over `battery` against the reference replay; at least the sum of fidelity.terms."
         },
         "floor_max": {
           "type": "number",
@@ -379,11 +469,12 @@
           "description": "Irreducible split-half MC noise floor for the same ensemble."
         },
         "terms": {
-          "type": [
-            "object",
-            "null"
+          "type": "object",
+          "description": "The certificate's bounded error terms (SPEC \u00a79.5.5), each a bound on the replay error over the battery in the units of err_max. REQUIRED.",
+          "required": [
+            "truncation",
+            "quadrature"
           ],
-          "description": "The certificate's bounded error terms (SPEC \u00a79.5.5), each a bound on the replay error over the battery in the units of err_max. REQUIRED on a 'continuous' pack, OPTIONAL otherwise. err_max of a continuous pack is at least truncation + quadrature.",
           "properties": {
             "truncation": {
               "type": "number",
@@ -391,9 +482,30 @@
               "description": "The bands beyond K."
             },
             "quadrature": {
+              "type": "object",
+              "required": [
+                "positions"
+              ],
+              "description": "The block quadrature of walk_params.block, one bound per channel: 0.5 * sum_k g_k^2 rel(m, omega_k h) (T/(pi k)^2) QV_c, with QV_c from walk_params.qv and rel(m, x) = x^(2(m+1)) / (((m+1)!)^2 (2m+3) 4^(m+1)).",
+              "properties": {
+                "positions": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "local_time": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "field": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            },
+            "field_read": {
               "type": "number",
               "minimum": 0,
-              "description": "The block quadrature of walk_params.block: the largest over the battery of 0.5 * rel(m, omega h) * 2 b D."
+              "description": "The field read: 0.5 * (gamma B0 chi)^2 2 D T_e |grad b|^2 dt_f^2, the largest over the battery. REQUIRED iff walk_params.field_read_interval is present."
             },
             "truncation_from": {
               "type": "string",
@@ -451,7 +563,12 @@
             "type": "object"
           }
         }
-      }
+      },
+      "required": [
+        "err_max",
+        "floor_max",
+        "terms"
+      ]
     },
     "mt": {
       "type": [
@@ -545,16 +662,83 @@
     {
       "if": {
         "required": [
-          "compression"
+          "walk_params"
         ],
         "properties": {
-          "compression": {
+          "walk_params": {
             "required": [
-              "basis"
+              "field_read_interval"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "fidelity": {
+            "properties": {
+              "terms": {
+                "required": [
+                  "field_read"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "walk_params"
+        ],
+        "properties": {
+          "walk_params": {
+            "required": [
+              "qv"
             ],
             "properties": {
-              "basis": {
-                "const": "continuous"
+              "qv": {
+                "required": [
+                  "local_time"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "fidelity": {
+            "properties": {
+              "terms": {
+                "properties": {
+                  "quadrature": {
+                    "required": [
+                      "local_time"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "walk_params"
+        ],
+        "properties": {
+          "walk_params": {
+            "required": [
+              "qv"
+            ],
+            "properties": {
+              "qv": {
+                "required": [
+                  "field"
+                ]
               }
             }
           }
@@ -562,65 +746,25 @@
       },
       "then": {
         "required": [
-          "fidelity"
+          "walk_params"
         ],
         "properties": {
           "walk_params": {
             "required": [
-              "block"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "n_t"
-                  ]
-                },
-                {
-                  "required": [
-                    "dt_traj"
-                  ]
-                }
-              ]
-            }
-          },
-          "compression": {
-            "properties": {
-              "method": {
-                "not": {
-                  "const": "identity"
-                }
-              }
-            }
+              "field_read_interval"
+            ]
           },
           "fidelity": {
-            "type": "object",
-            "required": [
-              "terms"
-            ],
             "properties": {
               "terms": {
-                "type": "object",
-                "required": [
-                  "truncation",
-                  "quadrature"
-                ]
+                "properties": {
+                  "quadrature": {
+                    "required": [
+                      "field"
+                    ]
+                  }
+                }
               }
-            }
-          }
-        }
-      },
-      "else": {
-        "properties": {
-          "walk_params": {
-            "required": [
-              "n_t",
-              "dt_traj"
-            ],
-            "not": {
-              "required": [
-                "block"
-              ]
             }
           }
         }

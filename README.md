@@ -40,7 +40,7 @@ replayer, and pooled in a public substrate bank.
 - **The phantom format:** [`RPH.md`](RPH.md) — composing solved packs into a voxel grid.
 - **Substrate spec:** [`SUBSTRATE.md`](SUBSTRATE.md) — the declarative description of the substrate a walk is run on (domain and its faces, pools with bulk properties and susceptibility, walls with per-side physics, seeding, request vs realisation); the only input a conformant generator accepts, embedded in every pack. Schema: [`schema/substrate.schema.json`](schema/substrate.schema.json); examples in [`examples/substrates/`](examples/substrates/).
 - **Acquisition spec:** [`ACQUISITION.md`](ACQUISITION.md) — the one acquisition object every consumer reads (what the scanner does from the excitation to the readout: the physical gradient, the RF schedule with each pulse's role, the readout, a timing budget, the analytical encoding), the rules deriving the effective gradient, the coherence state and the echoes from it, the invariants a builder verifies, the families as shapes × assemblers, the cited scanner-limit catalogue, and the Pulseq interchange. `RPK.md` §6.6 says the acquisition is a replay knob; this says what the knob is.
-- **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representations* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
+- **Codec registry:** [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) — the concrete position *representation* and storage codecs and their stored keys, versioned separately from the frozen core so methods can be added without touching the format.
 - **Metadata schema:** [`schema/rpk_metadata.schema.json`](schema/rpk_metadata.schema.json).
 - **Examples:** [`examples/`](examples/) — a standalone writer + replayer (no dependencies
   beyond NumPy + safetensors), a conformance checker, and dmipy-sim interop.
@@ -50,21 +50,21 @@ replayer, and pooled in a public substrate bank.
 > For a fixed geometry, diffusivity, and seed, the walker trajectories are **independent of**
 > the gradient waveform, field, relaxation, and susceptibility. Those are **replay knobs**:
 > compute the walk once, store it, and evaluate any acquisition as a cheap functional of the
-> stored positions.
+> stored bands.
 
 Everything follows from this invariant. Two things the spec states up front:
 
-- **Resolution limit.** One walk replays any `G(t)` resolvable on its save step `Δt` (Nyquist) — temporal structure finer than `Δt` isn't stored.
-- **Representation ≠ meaning.** A pack's meaning is the raw trajectory. Storing positions in a linear basis is a *change of representation* — closer to a compiler's intermediate representation (IR) than to a zip file — that turns replay into a projection onto `K` coefficients instead of an integral over every timestep. A full basis is exact wherever raw is; a truncated one is exact within its span and certifies the rest. So the format is representation-agnostic: a raw pack is fully conformant, and compression never changes what a pack *means* (§9 of the spec).
+- **Resolution limit.** One walk replays any `G(t)` whose spectrum lies below its band `K / (2 · T_max)` — temporal structure above it isn't stored.
+- **One basis.** A pack is the exact endpoints and `K` bands of each running integral (position, contact, field) on the continuous sines of `[0, T]`, accumulated while the walk runs; there is no save grid and no raw trajectory. Replay is a projection onto `K` coefficients; a pack is exact within its span and certifies the rest (`fidelity.terms`: truncation, quadrature per channel, field read). A pack on a save grid is refused by name and re-walked, never converted (§9.5 of the spec).
 
 ## Capability tiers (a "limited" generator is still interoperable)
 
 | Tier | Adds channel | Replays |
 |---|---|---|
-| **C0 Gradient** | `positions` (required) | any `G(t)` resolvable at `Δt`, b-tensor, EAP |
+| **C0 Gradient** | `positions` (required) | any `G(t)` within the band, b-tensor, EAP |
 | **C1 Bulk relaxation** | `compartment` | any intrinsic `T2`/`T1` |
 | **C2 Surface** | `boundary_local_time` | any surface relaxivity `ρ` |
-| **C3 Field** | `susc_field_{C,S,0}` grid maps **or** `susc_field_basis` (per-walker, any 3-D morphology) | any `B0`, susceptibility, orientation |
+| **C3 Field** | `susc_field_basis` (per-walker, accumulated at the walker's position, any 3-D morphology) | any `B0`, susceptibility, orientation |
 | **C4 Magnetization transfer** | C1 `bound` occupancy column (emergent) **or** parametric two-pool `mt` (geometry-derived) | magnetization transfer |
 
 A producer declares the tiers it populates; a replayer refuses (never fakes) tiers a pack
@@ -88,9 +88,9 @@ intersection of its packs'.
 
 **Pack spec v0.4.0, phantom spec v0.4.0, substrate spec v0.2.2, codec registry v0.5.0, container `0.4` (drafts for comment).** Nothing is numbered `1.0` or above until publication, container line included: a `0.x`
 minor bump MAY break, and `0.4` does: a pack stores channels and no tissue value (`per_comp` and the bound pool's relaxation
-times leave the metadata; the embedded substrate specification defines the compartment ids). `0.3` removes a channel. `0.2.0` adds two OPTIONAL, backward-compatible
+times leave the metadata; the embedded substrate specification defines the compartment ids). `0.3` removes a channel. `0.2.0` adds two OPTIONAL
 representations — a per-walker Field basis (§6.4.1) and a parametric two-pool MT model (§6.5.1) —
-plus the additive-shard property (§3); all `0.1.x` packs remain conformant. The reference
+plus the additive-shard property (§3). The pack is one basis (§9.5): a pack on a save grid is refused and re-walked. The reference
 implementation (dmipy-sim, private for now) emits `rpk_schema_version = "0.4"`.
 
 Intended trajectory: this spec is deposited (Zenodo) to **fix the format's definition and
@@ -119,6 +119,6 @@ Replay Packs.
 ## Implementing a replayer
 
 You need ~40 lines: read safetensors, validate metadata, and implement the gradient phase
-`φ = γ Δt Σ G(t)·r(t)` (spec §6.1). See [`examples/reference_replayer.py`](examples/reference_replayer.py)
+`φ = γ ∫ G(t)·r(t) dt` on the bands (spec §6.1, §9.5.3). See [`examples/reference_replayer.py`](examples/reference_replayer.py)
 for a complete, dependency-light C0/C1 replayer, and [`examples/conformance_check.py`](examples/conformance_check.py)
 to validate a pack against the spec.

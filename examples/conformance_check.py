@@ -1,9 +1,11 @@
-"""Conformance checker for a Replay Pack against SPEC.md §13.
+"""Conformance checker for a Replay Pack against RPK.md §13.
 
-Validates: safetensors readability, metadata against schema/rpk_metadata.schema.json,
-required `positions` channel + shape, tier-flag ⇒ channel-present consistency, shared
-(N_w, N_t) across per-walker channels, and the lossy-codec ⇒ fidelity rule. Prints the
-declared tiers and envelope.
+Validates: safetensors readability, metadata against schema/rpk_metadata.schema.json, the
+refusals of §9.5.1 (a pack carrying n_t, dt_traj, compression.basis, the identity codec or a
+save-grid tensor is refused BY NAME with the instruction to re-walk it), the required band
+tensors of `positions`, tier-flag => channel-present consistency, shared N_w across per-walker
+channels, the event lists of the occupancy (§9.5.7), and the certificate (§9.5.5): block, qv,
+fidelity.terms. Prints the declared tiers and envelope.
 
 Usage:  python conformance_check.py <pack.rpk>
 Exit code 0 = conformant, 1 = not. Apache-2.0.
@@ -17,60 +19,93 @@ from safetensors import safe_open
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCHEMA = os.path.join(HERE, "..", "schema", "rpk_metadata.schema.json")
 
-# Channel presence is codec-aware (SPEC §9): a channel is "present" if its raw key OR any of
-# its codec sub-array key-groups are in the file. These key-groups mirror CODEC_REGISTRY.md
-# (the living registry) — update them there and here together when a codec is added.
+# Channel presence is the registry's stored key-groups (CODEC_REGISTRY.md): a channel is
+# "present" if all keys of any one group are in the file. There is no raw key.
 CHANNEL_KEYS = {
-    # `bridge_dst` writes pos_{x,y,z}; the four retired position codecs (dct_coeffs, modes+*)
-    # are NOT listed -- a pack carrying them is refused, not read (registry 0.4.0).
-    "positions": [["positions"], ["pos_x", "pos_y", "pos_z"]],
+    "positions": [["pos_x", "pos_y", "pos_z"],
+                  ["pos_x_ends", "pos_y_ends", "pos_z_ends", "pos_band_scale"]],
     # C1 is one or more occupancy columns: `comp` is required, others (e.g. `bound`) optional.
-    "compartment": [["compartment"], ["comp_rle_vals", "comp_rle_lens", "comp_rle_counts"]],
-    "boundary_local_time": [["boundary_local_time"], ["dlog_boundary_unit"],
-                            ["blt_bridge_dst", "blt_start", "blt_endpoint"],
-                            ["blt_counts", "blt_cols", "blt_qvals"], ["blt_dense_q"]],
-    # MT's bound pool is a C1 column, not a channel: bfrac_rle_* is retired (registry 0.5.0).
-    "bound_fraction": [["bound_fraction"], ["bound_frac"],
-                       ["bound_rle_vals", "bound_rle_lens", "bound_rle_counts"]],
+    "compartment": [["comp_static"], ["comp_events_offsets", "comp_events_t", "comp_events_label"]],
+    "bound": [["bound_static"], ["bound_events_offsets", "bound_events_t", "bound_events_label"]],
+    "boundary_local_time": [["blt_bridge_dst", "blt_start", "blt_endpoint"],
+                            ["blt_band_scale", "blt_start", "blt_endpoint"]],
     "spin_weights": [["spin_weights"]],
-    "susc_field_C": [["susc_field_C"]], "susc_field_S": [["susc_field_S"]],
-    "susc_field_0": [["susc_field_0"]],
+    "field": [["susc_path_dct", "susc_path_scale"]],
 }
 TIER_CHANNELS = {          # explicit replay_envelope flag -> channel(s) that MUST be present
     "bulk_relaxation": ["compartment"],
     "surface_relaxivity": ["boundary_local_time"],
-    "magnetization_transfer": ["bound_fraction"],
-    "field": ["susc_field_0"],   # isotropic Phi_0 is the minimum; l=2 C/S add orientation
+    "magnetization_transfer": ["bound"],      # or the parametric `mt` descriptor
+    "field": ["field"],                       # the path modes (SPEC §6.4.1)
 }
-# pre-rename 0.x aliases accepted on read (SPEC §10)
-ENV_ALIASES = {"T1T2": "bulk_relaxation", "relaxation": "bulk_relaxation",
-               "rho": "surface_relaxivity", "B0_any": "field", "orientation_any": "field",
-               "field_offresonance": "field", "field_orientation": "field",
-               "mt": "magnetization_transfer"}
 DISTRIBUTIONAL_KEYS = {"coeff_mean", "coeff_cov", "coeff_quantiles"}
-# `bridge_dst` is lossless only at K = N_t - 2 (the interior dimension), so it is not
-# unconditionally lossless and does not belong here; `identity` is the only codec that is.
-LOSSLESS_CODECS = {"identity"}
-# Refused on sight rather than read: each stores different quantities under names a current
-# reader would reinterpret, yielding plausible wrong numbers (SPEC §9.4, registry 0.4.0/0.5.0).
 RETIRED_CODECS = {"temporal_dct", "lowrank", "gaussian", "marginal"}
-RETIRED_KEYS = {"dct_coeffs": "positions as cosine bands (retired: use bridge_dst / pos_*)",
-                "blt_dct_coeffs": "C2 as detrended cosine bands (retired: use blt_bridge_dst)",
-                "bfrac_rle_vals": "MT as its own channel (retired: use the C1 `bound` column)"}
+# Refused tensors (registry, "Refused forms"): each belongs to a form this revision does not read.
+REFUSED_KEYS = {
+    "susc_field_0": "a field grid as a field route", "susc_field_C": "a field grid as a field route",
+    "susc_field_S": "a field grid as a field route",
+    "positions": "raw positions on a save grid",
+    "compartment": "the occupancy sampled on a save grid",
+    "boundary_local_time": "the contact sampled on a save grid",
+    "susc_field_basis": "the field sampled on a save grid",
+    "dlog_boundary_unit": "the contact sampled on a save grid",
+    "blt_counts": "the contact sampled on a save grid", "blt_cols": "the contact sampled on a save grid",
+    "blt_qvals": "the contact sampled on a save grid", "blt_dense_q": "the contact sampled on a save grid",
+    "comp_rle_vals": "the occupancy as runs on a save grid", "comp_rle_lens": "the occupancy as runs on a save grid",
+    "comp_rle_counts": "the occupancy as runs on a save grid", "bound_rle_vals": "the occupancy as runs on a save grid",
+    "bound_rle_lens": "the occupancy as runs on a save grid", "bound_rle_counts": "the occupancy as runs on a save grid",
+    "dct_coeffs": "positions as cosine bands", "blt_dct_coeffs": "the contact as detrended cosine bands",
+    "bfrac_rle_vals": "MT as a channel of its own (it is the `bound` column)",
+}
+INSTRUCTION = ("this revision does not read it: re-walk the pack with a conformant producer "
+               "(SPEC §9.5.1). A pack is never converted.")
 
 
 def _present(channel, keys):
-    """True iff `channel` is realized by any codec key-group present in `keys`."""
+    """True iff `channel` is realized by any registry key-group present in `keys`."""
     return any(all(k in keys for k in group) for group in CHANNEL_KEYS.get(channel, [[channel]]))
 
 
-def _norm_env(meta):
-    """replay_envelope with 0.x aliases folded onto the explicit names (SPEC §10)."""
-    env = dict(meta.get("replay_envelope", {}))
-    for old, new in ENV_ALIASES.items():
-        if old in env and new not in env:
-            env[new] = env[old]
-    return env
+def _walk(obj, path=""):
+    """Yield (path, key) for every dict key under obj."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield f"{path}.{k}" if path else k, k
+            yield from _walk(v, f"{path}.{k}" if path else k)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _walk(v, f"{path}[{i}]")
+
+
+def refusals(meta, keys):
+    """The forms SPEC §9.5.1 refuses, each named, with the instruction to re-walk."""
+    out = []
+    wp, comp = meta.get("walk_params", {}), meta.get("compression", {})
+    for k in ("n_t", "dt_traj"):
+        if k in wp:
+            out.append(f"walk_params.{k} is present: {INSTRUCTION}")
+    for k in ("n_t",):
+        if k in (wp.get("windows") or {}):
+            out.append(f"walk_params.windows.{k} is present: {INSTRUCTION}")
+    for path, k in _walk(comp, "compression"):
+        if k == "n_t" or path == "compression.basis":
+            out.append(f"{path} is present: {INSTRUCTION}")
+    if "cell_size" in wp:
+        out.append(f"walk_params.cell_size is present (a field grid as a field route): {INSTRUCTION}")
+    if "per_comp" in meta:
+        out.append("per_comp is present (a pack stores no tissue value, SPEC §8.5): re-walk the pack")
+    method = comp.get("method")
+    if method == "identity":
+        out.append(f"compression.method 'identity' is present: {INSTRUCTION}")
+    if method in RETIRED_CODECS:
+        out.append(f"compression.method {method!r} is present, a retired codec: {INSTRUCTION}")
+    for k, why in REFUSED_KEYS.items():
+        if k in keys:
+            out.append(f"tensor {k!r} is present ({why}): {INSTRUCTION}")
+    for k in sorted(keys):
+        if k.endswith(("_rle_vals", "_rle_lens", "_rle_counts")) and k not in REFUSED_KEYS:
+            out.append(f"tensor {k!r} is present (the occupancy as runs on a save grid): {INSTRUCTION}")
+    return out
 
 
 def check(path):
@@ -80,17 +115,21 @@ def check(path):
             keys = set(f.keys())
             hdr = f.metadata() or {}
             shapes = {k: f.get_slice(k).get_shape() for k in keys}
+            events = {k: f.get_tensor(k) for k in keys if "_events_" in k}
     except Exception as e:
         return [f"not a readable safetensors file: {e}"], []
 
-    blob = hdr.get("rpk") or hdr.get("json")   # "rpk" canonical, "json" = 0.x legacy alias
+    blob = hdr.get("rpk")
     if not blob:
-        return ["__metadata__ has no 'rpk' (or legacy 'json') JSON blob (SPEC §12)"], []
+        return ["__metadata__ has no 'rpk' JSON blob (SPEC §12)"], []
     meta = json.loads(blob)
-    if "rpk" not in hdr and "json" in hdr:
-        warns.append("metadata under legacy header key 'json'; SHOULD migrate to 'rpk' (SPEC §12)")
 
-    # 1. metadata schema (best-effort; jsonschema optional)
+    # 1. the refusals of §9.5.1 come first: nothing of a refused pack is read.
+    ref = refusals(meta, keys)
+    if ref:
+        return ref, warns
+
+    # 2. metadata schema (best-effort; jsonschema optional)
     try:
         import jsonschema
         jsonschema.validate(meta, json.load(open(SCHEMA)))
@@ -99,93 +138,112 @@ def check(path):
     except Exception as e:
         errs.append(f"metadata fails schema: {getattr(e, 'message', e)}")
 
-    # 2. retired representations are REFUSED, not read. Each stores different quantities under
-    # names a current reader would reinterpret, so a stale pack decodes to plausible wrong numbers
-    # rather than failing. The pack must be re-encoded from its master.
-    method = meta.get("compression", {}).get("method", "identity")
-    if method in RETIRED_CODECS:
-        errs.append(f"position codec {method!r} is retired and MUST be refused; re-encode as "
-                    f"'bridge_dst' (SPEC §9.4, registry 0.4.0)")
-    for k, why in RETIRED_KEYS.items():
-        if k in keys:
-            errs.append(f"retired key {k!r} present — {why}; re-encode from the master")
-    c1 = ((meta.get("compression", {}).get("channels") or {}).get("compartment") or {})
-    if c1 and "columns" not in c1:
-        errs.append("C1 metadata predates the occupancy-column layout (no 'columns'); the arrays "
-                    "are readable but declared differently — re-encode (registry 0.5.0)")
-
-    # 2a. the basis of the band-stored channels (SPEC §9.5): `dst1` (the default when absent) is
-    # on the saves, `continuous` on [0, T] with no save count, a block record and certified terms.
     comp = meta.get("compression", {})
-    basis = comp.get("basis", "dst1")
+    method = comp.get("method")
     wp = meta.get("walk_params", {})
-    if basis not in ("dst1", "continuous"):
-        errs.append(f"compression.basis {basis!r} is not 'dst1' or 'continuous'; MUST be refused (SPEC §9.5.1)")
-    elif basis == "continuous":
-        if method == "identity":
-            errs.append("compression.basis 'continuous' with the identity codec: raw arrays are saves (SPEC §9.5.1)")
-        if not wp.get("block"):
-            errs.append("continuous pack without walk_params.block {h, m, precision} (SPEC §9.5.5)")
-        for k in ("n_t", "dt_traj"):
-            if k in wp:
-                errs.append(f"continuous pack carries walk_params.{k}: it has no saves (SPEC §9.5.6)")
-        terms = (meta.get("fidelity") or {}).get("terms") or {}
-        if "truncation" not in terms or "quadrature" not in terms:
-            errs.append("continuous pack without fidelity.terms {truncation, quadrature} (SPEC §9.5.5)")
-    else:
-        if "block" in wp:
-            errs.append("walk_params.block on a pack whose bands are on the saves (SPEC §9.5.5)")
-        for k in ("n_t", "dt_traj"):
-            if k not in wp:
-                errs.append(f"walk_params.{k} missing (REQUIRED with compression.basis 'dst1', SPEC §9.5.2)")
+    K = comp.get("K")
 
-    # 2b. required positions channel (codec-aware; shape only checkable for identity)
+    # 3. the pack is bands, accumulated in blocks and certified (SPEC §9.5.5)
+    if not wp.get("block"):
+        errs.append("walk_params.block {h, m, precision} is missing (SPEC §9.5.5)")
+    if not (wp.get("qv") or {}).get("positions"):
+        errs.append("walk_params.qv.positions is missing (SPEC §9.5.5)")
+    fid = meta.get("fidelity") or {}
+    terms = fid.get("terms") or {}
+    if "truncation" not in terms or "positions" not in (terms.get("quadrature") or {}):
+        errs.append("fidelity.terms {truncation, quadrature.positions} is missing (SPEC §9.5.5)")
+    if "local_time" in (wp.get("qv") or {}) and "local_time" not in (terms.get("quadrature") or {}):
+        errs.append("walk_params.qv.local_time without fidelity.terms.quadrature.local_time (SPEC §9.5.5)")
+    if "field" in (wp.get("qv") or {}) and "field" not in (terms.get("quadrature") or {}):
+        errs.append("walk_params.qv.field without fidelity.terms.quadrature.field (SPEC §9.5.5)")
+    if "field_read_interval" in wp and "field_read" not in terms:
+        errs.append("walk_params.field_read_interval without fidelity.terms.field_read (SPEC §9.5.5)")
+    if ("field" in (wp.get("qv") or {})) and "field_read_interval" not in wp:
+        errs.append("walk_params.qv.field without walk_params.field_read_interval (SPEC §9.5.5)")
+    if fid and "err_max" in fid and terms.get("truncation") is not None:
+        s = terms["truncation"] + sum((terms.get("quadrature") or {}).values()) + terms.get("field_read", 0.0)
+        if fid["err_max"] < s * (1 - 1e-9):
+            errs.append(f"fidelity.err_max {fid['err_max']:.3e} is below the sum of its terms {s:.3e} (SPEC §9.5.5)")
+
+    # 4. required positions channel: the band tensors of width K + 2
     if not _present("positions", keys):
-        errs.append("missing required 'positions' channel / codec sub-arrays (SPEC §5.1/§9)")
-    elif method == "identity":
-        if len(shapes["positions"]) != 3 or shapes["positions"][2] != 3:
-            errs.append(f"positions shape {shapes['positions']} is not (N_w, N_t, 3)")
+        errs.append("missing required 'positions' channel: pos_x, pos_y, pos_z (SPEC §5.1/§9, registry)")
+        n_w = None
+    elif "pos_x" in keys:
+        n_w = shapes["pos_x"][0]
+        for a in "xyz":
+            sh = shapes.get(f"pos_{a}")
+            if sh is None or len(sh) != 2 or (K is not None and sh[1] != K + 2) or sh[0] != n_w:
+                errs.append(f"pos_{a} shape {sh} is not (N_w, K+2) with K = {K}")
     else:
-        warns.append(f"codec {method!r}: positions shape checked only after decode")
+        n_w = shapes["pos_x_ends"][0]
+    if n_w is not None and wp.get("n_walkers") not in (None, n_w):
+        errs.append(f"walk_params.n_walkers {wp.get('n_walkers')} != N_w {n_w} of positions")
 
-    # 3. tier flag ⇒ channels present (codec-aware; explicit names + 0.x aliases)
-    env = _norm_env(meta)
+    # 5. tier flag => channels present
+    env = meta.get("replay_envelope", {})
     for flag, chans in TIER_CHANNELS.items():
         if env.get(flag):
+            if flag == "magnetization_transfer" and meta.get("mt"):
+                continue
             missing = [c for c in chans if not _present(c, keys)]
             if missing:
                 errs.append(f"replay_envelope.{flag}=true but missing channel(s) {missing} (SPEC §7/§13)")
+    if env.get("field") and "susc_path_dct" in keys:
+        if "field" not in (wp.get("qv") or {}) or "field_read_interval" not in wp:
+            errs.append("susc_path_dct without walk_params.qv.field and field_read_interval (SPEC §9.5.5)")
+        if (env.get("acquisition") or {}).get("max_refocusing_pulses") is None:
+            errs.append("susc_path_dct without replay_envelope.acquisition.max_refocusing_pulses (SPEC §9.4 rule 5)")
 
-    # 3b. distributional positions codec MUST NOT carry per-walker channels (SPEC §9)
+    # 6. distributional codec MUST NOT carry per-walker channels (SPEC §9.4)
     if keys & DISTRIBUTIONAL_KEYS:
-        bad = [c for c in ("compartment", "boundary_local_time", "bound_fraction", "spin_weights")
-               if _present(c, keys)]
+        bad = [c for c in ("compartment", "boundary_local_time", "bound", "spin_weights") if _present(c, keys)]
         if bad:
             errs.append(f"distributional codec carries per-walker channel(s) {bad}; "
-                        f"forbidden — such packs are Gradient-only (SPEC §9)")
+                        f"forbidden — such packs are Gradient-only (SPEC §9.4)")
         if any(env.get(f) for f in ("bulk_relaxation", "surface_relaxivity", "magnetization_transfer")):
-            errs.append("distributional codec must declare Gradient tier only (SPEC §9)")
-    if env.get("bulk_relaxation") and not (meta.get("per_comp") or {}).get("T2"):
-        errs.append("bulk_relaxation tier declared but per_comp.T2 absent (SPEC §10)")
-    if env.get("field"):
-        wp = meta.get("walk_params", {})
-        if wp.get("cell_size") is None:
-            errs.append("field tier declared but walk_params.cell_size absent (SPEC §7)")
+            errs.append("distributional codec must declare Gradient tier only (SPEC §9.4)")
 
-    # 4. shared (N_w, N_t) across per-walker/per-save channels
-    if "positions" in shapes and len(shapes["positions"]) == 3:
-        nw, nt = shapes["positions"][0], shapes["positions"][1]
-        for c in ("compartment", "boundary_local_time", "bound_fraction"):
-            if c in shapes and tuple(shapes[c][:2]) != (nw, nt):
-                errs.append(f"channel {c} shape {shapes[c]} != (N_w={nw}, N_t={nt}, ...)")
-        if "spin_weights" in shapes and shapes["spin_weights"][0] != nw:
-            errs.append(f"spin_weights length {shapes['spin_weights'][0]} != N_w={nw}")
+    # 7. the occupancy columns (SPEC §9.5.7): static labels or event lists, N_w shared
+    T_max = wp.get("T_max")
+    for col in ("comp", "bound"):
+        if f"{col}_static" in shapes and n_w is not None and shapes[f"{col}_static"][0] != n_w:
+            errs.append(f"{col}_static length {shapes[f'{col}_static'][0]} != N_w={n_w}")
+        if f"{col}_events_offsets" in events:
+            off = np.asarray(events[f"{col}_events_offsets"], np.int64)
+            t = np.asarray(events[f"{col}_events_t"], np.float64)
+            lab = np.asarray(events[f"{col}_events_label"])
+            if n_w is not None and off.size != n_w + 1:
+                errs.append(f"{col}_events_offsets has {off.size} entries, not N_w+1={n_w + 1}")
+                continue
+            if off[0] != 0 or np.any(np.diff(off) < 1) or off[-1] != t.size or t.size != lab.size:
+                errs.append(f"{col}_events: offsets must start at 0, give every walker >= 1 event, and end at "
+                            f"N_ev={t.size}={lab.size}")
+                continue
+            first = t[off[:-1]]
+            if np.any(first != 0.0):
+                errs.append(f"{col}_events: every walker's first event must be at t = 0")
+            walker = np.repeat(np.arange(off.size - 1), np.diff(off))
+            same = walker[1:] == walker[:-1]
+            if np.any(np.diff(t)[same] <= 0):
+                errs.append(f"{col}_events: times of a walker must strictly increase")
+            if np.any(lab[1:][same] == lab[:-1][same]):
+                errs.append(f"{col}_events: an event repeats the label before it")
+            if T_max is not None and np.any(t > T_max * (1 + 1e-9)):
+                errs.append(f"{col}_events: a time exceeds T_max")
+            if len(np.unique(walker)) == off.size - 1 and np.all(np.diff(off) == 1):
+                errs.append(f"{col}: every walker has one event; MUST be stored as {col}_static")
+    for c in ("boundary_local_time",):
+        if n_w is not None and "blt_start" in shapes and shapes["blt_start"][0] != n_w:
+            errs.append(f"blt_start length {shapes['blt_start'][0]} != N_w={n_w}")
+    if "spin_weights" in shapes and n_w is not None and shapes["spin_weights"][0] != n_w:
+        errs.append(f"spin_weights length {shapes['spin_weights'][0]} != N_w={n_w}")
 
-    # 5. lossy codec ⇒ fidelity present
-    if method not in LOSSLESS_CODECS and not meta.get("fidelity"):
-        errs.append(f"lossy codec {method!r} requires a 'fidelity' self-report (SPEC §9.3)")
+    # 8. fidelity present (every pack is certified, SPEC §9.4 rule 4)
+    if not fid:
+        errs.append("a 'fidelity' self-report is REQUIRED on every pack (SPEC §9.4 rule 4)")
 
-    # 6. license + citation
+    # 9. license + citation
     for k in ("license", "citation"):
         if not meta.get(k):
             errs.append(f"missing required metadata '{k}' (SPEC §13)")
@@ -197,8 +255,8 @@ def main(path):
     errs, warns = check(path)
     with safe_open(path, framework="numpy") as f:
         _h = f.metadata() or {}
-        meta = json.loads(_h.get("rpk") or _h.get("json") or "{}")
-    env = _norm_env(meta)
+        meta = json.loads(_h.get("rpk") or "{}")
+    env = meta.get("replay_envelope", {})
     tiers = [name for name, on in [
         ("C0-Gradient", env.get("gradient")), ("C1-BulkRelax", env.get("bulk_relaxation")),
         ("C2-Surface", env.get("surface_relaxivity")), ("C3-Field", env.get("field")),
