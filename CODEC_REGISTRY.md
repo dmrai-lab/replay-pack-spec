@@ -1,7 +1,7 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.6.0 (draft) — the bridge channels (positions and C2) gain an **integer band
+**Registry version:** 0.7.0 (draft) — the band-stored channels (`bridge_dst` positions, the C2 bridge, `susc_path_dct`) read against a declared **basis**, `compression.basis` (SPEC §9.5): `dst1`, the DST-I on the saves described below and implied when the field is absent, or `continuous`, the sine basis on `[0, T]`. The stored keys, the width `K + 2` and the containers are the same under both; what a coefficient means, and the absence of `n_t` on a continuous pack, are not ("Basis" below). 0.6.0 — the bridge channels (positions and C2) gain an **integer band
 container**: the two exact endpoints stay float32, the sine bands are stored per band range at 16 or 8
 bits with a per-band scale (the bands of a Brownian bridge fall as 1/k, so a per-band step keeps the
 reconstruction at the nanometre level while a K = 128 walk shrinks 3.4x); the scale tables carry a
@@ -108,6 +108,26 @@ buys structure, not error.
 
 Full rank is `K = n_t - 2`: two endpoints plus `n_t - 2` interior bands is exactly `n_t`
 coefficients for `n_t` samples, so the representation is exactly rank-preserving.
+
+#### Basis
+
+`compression.basis` (SPEC §9.5) names the basis the `beta` of every band-stored channel is on:
+
+- **`dst1`** (the default when the field is absent): the orthonormal DST-I of the bridge residual at the
+  `n_t - 2` interior saves, `alpha = sqrt(2 / (n_t - 1))`, exactly as above; `susc_path_dct` is the
+  orthonormal DCT-II over the `n_t` saves.
+- **`continuous`**: `s_k(t) = sqrt(2 / T) sin(pi k t / T)` on `[0, T]`, `beta_k = int_0^T u(t) s_k(t) dt`;
+  `susc_path_dct` holds `c_k = int_0^T e_k(t) b(t) dt` with `e_0 = T^(-1/2)` and
+  `e_k = sqrt(2 / T) cos(pi k t / T)`.
+
+Under `continuous` the tensors are the ones listed for `bridge_dst` (and for the C2 and `susc_path_dct`
+rows below), keyed and shaped alike, and the integer band container applies unchanged; the stored
+vector is still `[r(0), r(T) - r(0), beta_1 .. beta_K]`. What differs is the meaning of `beta` and what
+is absent: `n_t` is omitted from `compression.channels[*]` (the `static` descriptor, `susc_path_dct`'s
+parameters) and from `walk_params`, since a continuous walk has no saves. A reader MUST read
+`compression.basis` before it reads a tensor and MUST refuse a value it does not know: a `continuous`
+band decoded as a `dst1` one is a plausible number on the wrong basis and the wrong scale. The C1 kinds other than `static` are columns on the saves and are not defined for a continuous
+pack (SPEC §9.5.6).
 
 ### Retired position codecs
 
