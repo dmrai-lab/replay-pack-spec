@@ -436,6 +436,117 @@ One structural rule belongs in the core because it constrains tiers, not any par
 
 A channel's storage never changes what a pack *means* — the decoded array of §5 and the operations of §6 are fixed. For channels replay consumes **linearly** it is a pure *size/speed/quality choice*, and §9.2's span argument bounds the trade. For a channel consumed **non-linearly** — the Field basis (§6.4.1), Bloch/MT (§6.5) — a truncated representation may additionally narrow the *domain of validity*, which is a matter for `replay_envelope` (rule 5), never a silent property of the stored bytes. See [`CODEC_REGISTRY.md`](CODEC_REGISTRY.md) for the registered representations and storage codecs and their stored-key tables.
 
+### 9.5 The basis of the band-stored channels
+
+A channel stored as bands (the `bridge_dst` positions and the C2 contact bridge, the `susc_path_dct` field series; registry) stores the coefficients of one **running integral** `I(t)` per axis or component on a basis, and a coefficient means something only against that basis. `compression.basis` declares it. Both kinds are first-class; neither is a variant of the other.
+
+#### 9.5.1 The field
+
+`compression.basis` is `"dst1"` or `"continuous"`. It is absent on a pack whose bands are on the saves, and an absent field reads as `"dst1"`. It governs every band-stored channel of the pack at once -- C0 positions, C2 contact and C3 field (§9.5.2, §9.5.3) -- so a pack never mixes the two. It has a meaning only beside a band codec; the `identity` codec stores the saves themselves and takes none. A reader that meets any other value MUST refuse the pack. The two kinds store their coefficients under the same registry keys, the same width `K + 2` and the same containers, so a coefficient read against the wrong basis is a plausible number and not an error; that is why the field is read before any tensor, and why a continuous pack omits the save count (§9.5.6), which a reader written for the saves would otherwise take from the metadata.
+
+For a band-stored channel with running integral `I(t)` over `[0, T]` (`T = T_max`, or the window duration of a window table, §4.3), the **bridge residual** is
+
+```
+u(t) = I(t) − I(0) − (t/T)·[I(T) − I(0)],        u(0) = u(T) = 0,
+```
+
+and the stored vector per axis is `[I(0), I(T) − I(0), β_1, …, β_K]`: the two exact endpoints, then `K` bands of `u`. `I` is the position `r(t)` for C0, the cumulative boundary local time `ℓ` of §6.3 for C2, and `F(t) = ∫₀ᵗ b dt'` for C3, the running integral of the sampled field `b`.
+
+#### 9.5.2 `dst1`: the DST-I on the interior saves
+
+The walk is stored on its `n_t` saves `t_m = m·Δt`, `m = 0 … N`, `N = n_t − 1`, `T = N·Δt` (§4.3); the path between saves is the piecewise-linear interpolant (§6.1). The residual is taken at the saves, `u_m = u(t_m)`, and vanishes at `m = 0` and `m = N`; the **interior saves** are the `n_t − 2` values `m = 1 … N − 1`. The bands are their orthonormal DST-I,
+
+```
+β_k = Σ_{m=1}^{N−1} α · sin(π k m / N) · u_m ,      α = sqrt( 2 / (n_t − 1) ),      k = 1 … K ,
+```
+
+with `K ≤ n_t − 2`. Full rank is `K = n_t − 2`: the two endpoints and `n_t − 2` bands are `n_t` coefficients for `n_t` saves. A `dst1` band has the units of `I`. For C3 the per-save series of `b` is stored on the orthonormal DCT-II over its `n_t` saves, `K` modes (registry, `susc_path_dct`). The save step `Δt` is a property of the pack and `n_t` is required.
+
+#### 9.5.3 `continuous`: the sine basis on `[0, T]`
+
+No save grid enters. The basis is
+
+```
+s_k(t) = sqrt( 2 / T ) · sin( π k t / T ),     k = 1, 2, …     (orthonormal in L²(0, T)),
+β_k = ∫₀ᵀ u(t) · s_k(t) dt ,     I(t) = I(0) + (t/T)·[I(T) − I(0)] + Σ_k β_k · s_k(t).
+```
+
+A `continuous` band has the units of `I` times `sqrt(s)`. `K` is a band count only: there is no full rank, since a diffusing path has bands at every `k`, and what a truncation at `K` costs is the business of the certificate (§9.5.5).
+
+*The bands are the projections of the increments.* Let `e_k(t) = sqrt(2/T)·cos(π k t / T)`. For `k ≥ 1`,
+
+```
+β_k = (T / (π k)) · ∫₀ᵀ e_k(t) dI(t) = ( sqrt(2 T) / (π k) ) · ∫₀ᵀ cos(π k t / T) dI(t) .
+```
+
+By parts, with the antiderivative `−(T/(π k))·e_k` of `s_k`: the boundary term `[u · (−T e_k/(π k))]₀ᵀ` vanishes because `u(0) = u(T) = 0`; what remains is `(T/(π k)) ∫ e_k du`, and `du = dI − ([I(T) − I(0)]/T) dt` with `∫₀ᵀ e_k dt = 0` for `k ≥ 1`, which drops the ramp. For a path that is not of bounded variation the integral against `dI` is defined by this identity (for a diffusing path it is the Wiener integral). The cosine projection of the increments at `k = 0` is the displacement `I(T) − I(0)`, which the second stored entry holds exactly.
+
+*The endpoints are exact.* Every `s_k` vanishes at `0` and `T`, so the series returns `I(0)` and `I(T)` at every `K`, and a stored walk is continued from where it ended (§3, additivity in time) to the stored precision of the endpoints.
+
+*Relation to `dst1`.* For fixed `k`, as `Δt → 0` at fixed `T`, the `continuous` band is the `dst1` band times `sqrt(Δt)`; the two are bands of the same residual on a basis normalised to the saves and a basis normalised to time. A pack is read against the basis it declares and never against the other. For C3, the stored modes are `c_k = ∫₀ᵀ e_k(t)·b(t) dt` (`e_0 = T^{−1/2}`, `k = 0 … K − 1`), that is `∫ e_k dF`, and by the identity above the sine bands of `F`: C0, C2 and C3 are one basis, as the registry states for the saves.
+
+*Gradient phase.* §6.1 on a continuous pack reads
+
+```
+φ = γ · [ r(0)·M0 + (r(T) − r(0))·M1 + Σ_{k=1}^{K} β_k · Ĝ_k ],     M0 = ∫G dt,   M1 = ∫ (t/T) G dt,   Ĝ_k = ∫ G(t) s_k(t) dt,
+```
+
+each integral over the waveform's own pieces in closed form and over the acquisition's own duration (§3, an acquisition ends at its echo), per gradient axis against the matching axis of `β`. Refocusing (`M0 = 0`) and velocity compensation (`M1 = 0`) remove the first two columns exactly, as on the saves.
+
+#### 9.5.4 Evaluating a continuous pack at an instant
+
+A reader needing the channel at a time `t` -- to draw a path, to continue a walk, to cut a prefix inside a window (§3) -- evaluates the basis at `t`:
+
+```
+I(t) = I(0) + (t/T)·[I(T) − I(0)] + Σ_{k=1}^{K} β_k · sqrt(2/T) · sin(π k t / T),        0 ≤ t ≤ T.
+```
+
+`t` is a time in seconds. There is no save index to round it to and no grid it must lie on; the value at `t = 0` and `t = T` is exact, and in between it is the reconstruction at `K` bands. An array on a grid of the reader's choosing is a sampling of this function made by the reader, not the stored channel. The C2 contact of an acquisition ending at `t_e` is `B(t_e) − B(0)` read the same way, and the field gate (§6.6) contracts against the modes `c_k` of §9.5.3 by Parseval, `∫ s(t)·b(t) dt = Σ_k ŝ_k c_k` with `ŝ_k = ∫ s e_k dt`. The band-limited prefix of §3 is the function cut at `TE'` and re-projected onto the basis of `[0, TE']`; its error is certified as any lossy pack's is.
+
+#### 9.5.5 `walk_params.block` and the certificate
+
+A continuous pack is accumulated while the walk runs, not read off saves, so how it was accumulated is part of its error. `walk_params.block = {h, m, precision}` is REQUIRED on a continuous pack and absent on a `dst1` pack, whose bands are computed from saves it holds:
+
+| key | type | meaning |
+|---|---|---|
+| `h` | number, s | the block length: the producer summed each channel's increments within blocks of this length |
+| `m` | integer `≥ 0` | the moment order: within a block it kept `∫ τ^j dI` for `j = 0 … m`, `τ` from the block centre |
+| `precision` | `"float32"` or `"float64"` | the floating-point type in which block contributions were accumulated across blocks |
+
+`(h, m)` is a constant of the pack, fixed at walk time like `D`, never a replay knob.
+
+*The quadrature term.* For free diffusion the relative error in the variance of band `k` from the block quadrature is `rel(m, ω_k·h)` with `ω_k = π k / T`:
+
+| `m` | `rel(m, ωh)` |
+|---|---|
+| 0 | `(ωh)² / 12` |
+| 1 | `(ωh)⁴ / 320` |
+| 2 | `(ωh)⁶ / 16128` |
+
+It is an **absolute** error, not a fraction of the band's own variance: a restricted walk's high bands are far smaller than the free value while the quadrature error is not, so the same error is a large fraction of a restricted band and below the table in absolute terms. What a replay sees is that the quadrature adds an independent phase of variance at most `rel(m, ω h) · 2 b D` to a measurement of b-value `b` (s·m⁻²) whose waveform reaches the angular frequency `ω` (never above `π K / T`), with `D` the largest free diffusivity of the walk. The signal is biased by at most half of that times `|S|`. It does not depend on the walker count or on the substrate, only on the band and on the `b` the pack can reach (`replay_envelope.acquisition.b_max`). For `m > 2` a producer states its own `rel`. The quadrature term does not include the rounding of the accumulation, which a producer with `precision = "float32"` MUST measure and carry in `err_max`.
+
+*The certificate.* A continuous pack has no raw walk to be decoded against, so its `fidelity` (§9.4 rule 4) reports its two bounded errors as separate terms in `fidelity.terms = {truncation, quadrature}`, both REQUIRED, each a bound on the replay error over the battery in the units of `err_max`:
+
+- `truncation`: the bands beyond `K`. Walk-free, from the free-bridge band variances of §9.5.6 weighted by the battery waveforms' projections; or measured on a pilot subset as `K` against `2K` bands accumulated in the same walk, which `truncation_from` (`"band_variance"` or `"pilot"`, OPTIONAL) records.
+- `quadrature`: the bound above, `½ · rel(m, ω h) · 2 b D`, the largest over the battery.
+
+`err_max` of a continuous pack is at least the sum of the two terms. Quantisation by a container is part of `err_max` as for any pack, and the split-half floors (`floor_max`, per voxel where partitioned) are read from the coefficients as ever. `fidelity.terms` is OPTIONAL on a `dst1` pack.
+
+#### 9.5.6 The free bridge's band variances, and no save count
+
+Free diffusion in one axis has displacement variance `2 D t`. Its bridge residual has covariance `2 D (min(s,t) − s t / T)`, whose eigenfunctions are the `s_k` and whose bands are uncorrelated, with variances
+
+```
+dst1:        Var β_k = D·Δt / ( 2 sin²( π k / (2 N) ) ),                 N = n_t − 1,
+continuous:  Var β_k = 2 D T² / (π k)² .
+```
+
+The second is the limit of the first. At fixed `T`, `Δt = T/N`; the `continuous` band is `sqrt(Δt)` times the `dst1` band, so `Var β_k^cont = Δt · D Δt / (2 sin²(π k / 2N))`, and `sin x → x` gives `Δt² · D · 2N² / (π k)² = 2 D T² / (π k)²` since `N·Δt = T`. The phase variance a truncation at `K` leaves for a waveform is `γ² Σ_{k>K} Ĝ_k² Var β_k` per axis, with `Ĝ_k` as in §9.5.3 for `continuous` and, for `dst1`, `Ĝ_k` the orthonormal DST-I of the waveform's per-save weights (§6.1) times `Δt` (registry). These are the free-walk values: the reference scale against which a restricted walk's measured band variance is read.
+
+**`n_t` has no meaning on a continuous pack.** There are no saves, so `walk_params.n_t`, `walk_params.dt_traj` and every `n_t` of `compression.channels` are omitted, and a window table (§4.3) of a continuous pack carries `n`, `T` and `walks` and no `n_t`. A reader MUST NOT require them and MUST NOT infer a save count from a tensor width. `T_max` stays; the temporal resolution is the band `K / (2 · T_max)` (§9.4 rule 6) where §3 and §8.3 speak of the save step. §5's `(N_w, N_t, …)` shapes name the channel on the saves; on a continuous pack the channel is the function of §9.5.4 and its stored tensors have the widths the registry gives, `K + 2` per axis. The C1 occupancy of §5.2 is a `(N_w, N_t)` column, so a continuous pack carries C1 only as the registry's `static` kind (one label per walker) and carries no other kind of `compartment` column and no `bound` column until C1 is defined for a walk without saves.
+
+**Reserved.** C1 as an event list `{t, label}` per walker is reserved for a later revision and is not defined here.
+
 ---
 
 ## 10. Metadata schema
@@ -447,10 +558,12 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
   "rpk_schema_version": "0.4",          // REQUIRED, semver of the container schema
   "id": "canonical-wm/g070-f055-3T",    // REQUIRED, stable pack identifier
   "walk_params": {                       // REQUIRED
-    "n_walkers": 120000, "n_t": 200,
-    "dt_traj": 2.65e-4, "T_max": 0.053,  // s
+    "n_walkers": 120000, "n_t": 200,     // n_t, dt_traj: REQUIRED unless compression.basis is
+    "dt_traj": 2.65e-4, "T_max": 0.053,  //   "continuous", which has no saves (§9.5.6); T_max in s
     "diffusivity": 0.6e-9,               // m^2/s, FIXED (not a knob)
     "seed": 0,
+    "block": { "h": 2.0e-5, "m": 1,      // REQUIRED iff compression.basis is "continuous", else absent
+               "precision": "float64" }, //   (§9.5.5): block length (s), moment order, accumulator type
     "boundary": "periodic",              // OPTIONAL "periodic" | "reflecting" | "finite";
                                          //   sets grid-map sampling (§4.5) + bounds the envelope
                                          //   (a finite box restricts long-diffusion-time replays);
@@ -475,6 +588,7 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
                                          //   the NOMINAL tissue values a replayer may choose to apply
   "compression": {                       // REQUIRED — codec descriptor (see CODEC_REGISTRY.md)
     "method": "lowrank", "K": 64, "walker_preserving": true,
+    "basis": "dst1",                     // OPTIONAL — "dst1" (the default when absent) | "continuous" (§9.5)
     "temporal_bandwidth_hz": 603.8        // RECOMMENDED — K / (2 T_max): the band as a frequency (§9.4 rule 6)
   },
   "replay_envelope": {                   // REQUIRED — declared capabilities + domain
@@ -491,6 +605,8 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
   "fidelity": {                          // REQUIRED iff any lossy codec (§9); codec-agnostic
     "err_max": 0.0015,                   // worst decoded-vs-raw replay error over `battery`
     "floor_max": 0.0074,                 // irreducible MC noise floor (same ensemble)
+    "terms": null,                       // REQUIRED on a "continuous" pack, else OPTIONAL (§9.5.5):
+                                         //   {truncation, quadrature [, truncation_from]}, bounds on the replay error
     "within_2x_floor": true,             // err_max <= 2*floor_max -> loss is negligible
     "battery": "...",
     "certified": "measured",             // "measured" here, or "inherited" from a certifying pack of the same fill
