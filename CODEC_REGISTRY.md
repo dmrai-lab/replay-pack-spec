@@ -1,27 +1,14 @@
 # Replay Pack Codec Registry
 
 **Status:** living document, versioned **independently** of the core specification.
-**Registry version:** 0.7.0 (draft) — the band-stored channels (`bridge_dst` positions, the C2 bridge, `susc_path_dct`) read against a declared **basis**, `compression.basis` (SPEC §9.5): `dst1`, the DST-I on the saves described below and implied when the field is absent, or `continuous`, the sine basis on `[0, T]`. The stored keys, the width `K + 2` and the containers are the same under both; what a coefficient means, and the absence of `n_t` on a continuous pack, are not ("Basis" below). 0.6.0 — the bridge channels (positions and C2) gain an **integer band
-container**: the two exact endpoints stay float32, the sine bands are stored per band range at 16 or 8
-bits with a per-band scale (the bands of a Brownian bridge fall as 1/k, so a per-band step keeps the
-reconstruction at the nanometre level while a K = 128 walk shrinks 3.4x); the scale tables carry a
-leading **block** axis and an optional per-walker `band_block` so shards of a distributed fill merge
-without re-quantisation. C1 gains the column kind **`static`**: one label per walker when nothing
-crosses. 0.5.0 — C1 became a set of named **occupancy columns** and the
-separate `bound_fraction` channel was folded into it as the `bound` column: it was the same
-quantized-RLE codec under a second name, and binding is an occupancy like any other. The retired
-`bfrac_rle_*` keys MUST be refused. C2 moved to the bridge form (`blt_bridge_dst` + `blt_start`,
-DST-I of the doubly-pinned cumulative) — a wash on error, but a truncated cosine residual misses
-the stored endpoint by 1.6–6.4% at every `K`, which made segment chaining drift; and `susc_path_dct`
-gained a `bits` container (default **int8** + a per-(channel, band) `susc_path_scale`), half of
-float16 at equal capability. 0.4.0 — one position representation, `bridge_dst`; the four earlier position codecs (`temporal_dct`, `lowrank`, `gaussian`, `marginal`) are **retired and MUST be refused**, which is a breaking change for any pack written before it. 0.3.0 registered `susc_path_dct` for `susc_field_basis` (SPEC §6.4.1) alongside the raw-float16 baseline, the registry's first **capability-narrowing** codec (SPEC §9.4 rule 5).
+**Registry version:** 0.7.0 (draft). A pack is bands on **one** basis, the continuous sines of `[0, T]` (SPEC §9.5.3), plus exact occupancy in time (SPEC §9.5.7). The registry defines the stored tensor keys of each channel, the integer band container (per-band scales with a leading **block** axis and an optional per-walker `band_block`, so shards of a distributed fill merge without re-quantisation), the `static` and event-list forms of C1, and the forms a reader refuses.
 **License:** CC-BY-4.0 (registry text) / Apache-2.0 (reference code).
 
-The core [`RPK.md`](RPK.md) §9 defines the two storage concepts and their rules: position
-**representations** (§9.1) and their exactness *domain* (§9.2), per-channel **storage codecs**
+The core [`RPK.md`](RPK.md) §9 defines the two storage concepts and their rules: the position
+**representation** (§9.1) and its exactness *domain* (§9.2), per-channel **storage codecs**
 (§9.3), and the interface every method MUST satisfy (§9.4) — declared in `compression.method`,
-decodes to the §5 array contract, `identity` baseline, lossy self-certifies. This registry lists
-the **concrete representations and codecs** and the **exact safetensors tensor keys** each stores.
+decodes to the §5 channel contract, every pack self-certifies. This registry lists
+the **concrete representation and codecs** and the **exact safetensors tensor keys** each stores.
 It is a **storage / inference-optimization** layer: a method changes only *how* a channel is
 stored (and, for a representation, how cheaply it replays), never *what it means* — the meaning of
 every channel and of the replayed signal is fixed by the core (§5–6). One method here does more
@@ -29,49 +16,47 @@ than trade accuracy: a truncated representation of a **non-linearly consumed** c
 which requests the pack can serve at all, which the core requires be declared in `replay_envelope`
 rather than inferred from `fidelity` (SPEC §9.4 rule 5). Such entries are marked
 **capability-narrowing** and state the envelope key they oblige. The registry is versioned
-independently so methods can be added, revised, or deprecated **without changing the frozen core
+independently so methods can be added or revised **without changing the frozen core
 format**.
 
-A conformant replayer implements the `identity` codec and MAY implement any subset of the
+A conformant replayer implements `bridge_dst` and MAY implement any subset of the
 others; it MUST refuse (never guess) a `method` it does not recognize (SPEC §9, §13).
 
 ## Channel presence
 
 For tiers (SPEC §7) and conformance (SPEC §13), a channel counts as **present** if the file
-contains the channel's raw key **or** the codec's stored key-group listed below.
+contains the codec's stored key-group listed below. A channel has no raw key: there is no
+tensor of samples on a grid.
 
 ## Registered codecs
 
-### `identity` (normative baseline — always lossless)
-
-Every channel is stored raw under its own name.
+### Stored keys by channel
 
 | Decoded channel | Stored keys |
 |---|---|
-| `positions` | `positions` `(N_w, N_t, 3)` (identity) or `pos_x`, `pos_y`, `pos_z` `(N_w, K+2)` (`bridge_dst`) |
-| `spin_weights` | `spin_weights` |
-| `compartment` | `compartment` (one or more occupancy columns) |
-| `boundary_local_time` | `boundary_local_time`, or the codec keys below |
-| `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` |
-| `susc_field_basis` | `susc_field_basis` `(N_w, N_t, 13)` |
+| `positions` | `pos_x`, `pos_y`, `pos_z` `(N_w, K+2)` (`bridge_dst`, float container) or the integer band container below |
+| `spin_weights` | `spin_weights` `(N_w,)` |
+| `compartment` | per column: `comp_static` `(N_w,)`, or `comp_events_offsets`, `comp_events_t`, `comp_events_label`; the `bound` column the same under `bound_` |
+| `boundary_local_time` | `blt_bridge_dst`, `blt_start`, `blt_endpoint`, or the integer band container |
+| `susc_field_{0,C,S}` | `susc_field_0`, `susc_field_C`, `susc_field_S` (shared grid maps) |
+| `susc_field_basis` | `susc_path_dct` `(N_w, n_ch, K)` and `susc_path_scale` |
 
 ### Position representation
 
-There is **one** C0 representation. It is not a menu: the codecs listed in earlier revisions of
-this registry (`temporal_dct`, `lowrank`, `gaussian`, `marginal`) are **retired**, and a reader
-MUST refuse them rather than decode them — see "Retired position codecs" below for why that is
-a refusal and not a deprecation.
+There is **one** C0 representation.
 
 | `method` | Class | Stored keys | Notes |
 |---|---|---|---|
-| `bridge_dst` | walker-preserving, lossless at full rank | **float container**: `pos_x`, `pos_y`, `pos_z`, each `(N_w, K+2)` float32 | two exact endpoints, then `K` sine bands of the pinned residual |
+| `bridge_dst` | walker-preserving | **float container**: `pos_x`, `pos_y`, `pos_z`, each `(N_w, K+2)` float32 | two exact endpoints, then `K` sine bands of the pinned residual |
 | `bridge_dst` (integer band container) | walker-preserving; the bands quantised per band | per axis `pos_x_ends` `(N_w, 2)` float32 and `pos_x_b<i>` `(N_w, k1-k0)` int16 or int8 per band range `i`; `pos_band_scale` `(n_blocks, n_axes, K)` float32; optional `band_block` `(N_w,)` uint16 / int32 | `compression.container` lists the ranges `[{bands: [k0, k1], bits: 16 or 8}, ...]` covering `0 .. K-1`. Band `k` of walker `w` on axis `a` is `q * pos_band_scale[block(w), a, k]`, with `block(w) = band_block[w]` (0 when absent). The scale of a band is `max_w |beta_k| / (2^(bits-1) - 1)` over the block's walkers. A reader MUST refuse a pack whose scale table has more than one block and no `band_block`. |
 
-Per axis the stored vector is `[r(0), r(T) - r(0), beta_1 .. beta_K]`, where `beta` are the
-DST-I coefficients of the **Brownian bridge**
+The method name `bridge_dst` is the registered identifier of this representation. Per axis the stored
+vector is `[r(0), r(T) - r(0), beta_1 .. beta_K]`, where `beta` are the sine-basis coefficients of the
+**Brownian bridge** residual (SPEC §9.5.2, §9.5.3)
 
 ```
-r(t) = r(0) + (t/T)[r(T) - r(0)] + u(t),      u(0) = u(T) = 0
+r(t) = r(0) + (t/T)[r(T) - r(0)] + u(t),      u(0) = u(T) = 0,
+s_k(t) = sqrt(2/T) sin(pi k t / T),           beta_k = int_0^T u(t) s_k(t) dt .
 ```
 
 **The leading two entries are not bands.** They are the endpoints, and `K` in `compression.K`
@@ -88,81 +73,69 @@ the certificate, not the ratio, fixes `K'`.
 Three properties motivate the split, none of them a compression claim:
 
 - **The gradient moments are columns.** The phase is
-  `gamma dt [ r(0).M0 + (r(T)-r(0)).M1 + sum_k beta_k Ghat_k ]` with `M0 = sum_n G_n` and
-  `M1 = sum_n tau_n G_n`, so refocusing (`M0 = 0`) and velocity compensation (`M1 = 0`)
+  `gamma [ r(0).M0 + (r(T)-r(0)).M1 + sum_k beta_k Ghat_k ]` with `M0 = int G dt` and
+  `M1 = int (t/T) G dt`, so refocusing (`M0 = 0`) and velocity compensation (`M1 = 0`)
   annihilate the first two columns exactly. The design constraint and the storage layout are
   the same statement.
 - **Both endpoints are exact at every truncation**, so a stored walk can be continued from
   where it ended rather than only replayed. A band codec's endpoint error is the size of its
   interior error.
-- **The residual sits in its variance-optimal basis.** The discrete Brownian bridge has
-  covariance `min(m,n) - mn/N`, whose inverse is the Dirichlet Laplacian, so its
-  Karhunen-Loeve eigenvectors are exactly the DST-I vectors with eigenvalues
-  `1/(4 sin^2(pi k / 2N))`.
+- **The residual sits in its variance-optimal basis.** The Brownian bridge has covariance
+  `2 D (min(s,t) - s t / T)`, whose Karhunen-Loeve eigenfunctions are exactly the `s_k`, with
+  variances `2 D T^2 / (pi k)^2` (SPEC §9.5.6).
 
-Accuracy is indistinguishable from a cosine band truncation at equal budget, and that is a
-theorem rather than a measurement: the difference operator maps one basis onto the other
-exactly, `c_k(n) - c_k(n-1) = -2 sin(pi k / 2N) s_{k-1}(n)`, so a cosine expansion of a path
-*is* a sine expansion of its increments and the two truncate to the same subspaces. The split
-buys structure, not error.
+A cosine expansion of a path *is* a sine expansion of its increments: `beta_k = (sqrt(2T) / (pi k)) int cos(pi k t / T) dI`
+(SPEC §9.5.3), which is what the walk accumulates (SPEC §9.5.5). The split buys structure, not error.
 
-Full rank is `K = n_t - 2`: two endpoints plus `n_t - 2` interior bands is exactly `n_t`
-coefficients for `n_t` samples, so the representation is exactly rank-preserving.
+#### Derivation from the DST-I of saves
 
-#### Basis
+*Informative; the derivation of the accumulation identity, not a readable kind.* A walk saved at `n_t` instants
+`t_m = m h`, `h = T/N`, `N = n_t - 1`, has the orthonormal DST-I bands of its bridge residual,
+`b_k = sum_{m=1}^{N-1} sqrt(2/N) sin(pi k m / N) u_m`. By summation by parts the DST-I band of the saves is
+`b_k = sqrt(2/N) / (2 sin(pi k / 2N)) * sum_j cos(pi k (j + 1/2) / N) dI_j`, and the sine-basis band of the
+same increments accumulated at moment order `m = 0` and block `h` (cosines at the block midpoint) is
 
-`compression.basis` (SPEC §9.5) names the basis the `beta` of every band-stored channel is on:
+```
+beta_k = sqrt(h) * sinc(pi k / (2N)) * b_k ,          sinc(x) = sin(x) / x .
+```
 
-- **`dst1`** (the default when the field is absent): the orthonormal DST-I of the bridge residual at the
-  `n_t - 2` interior saves, `alpha = sqrt(2 / (n_t - 1))`, exactly as above; `susc_path_dct` is the
-  orthonormal DCT-II over the `n_t` saves.
-- **`continuous`**: `s_k(t) = sqrt(2 / T) sin(pi k t / T)` on `[0, T]`, `beta_k = int_0^T u(t) s_k(t) dt`;
-  `susc_path_dct` holds `c_k = int_0^T e_k(t) b(t) dt` with `e_0 = T^(-1/2)` and
-  `e_k = sqrt(2 / T) cos(pi k t / T)`.
+The free-bridge variance of the DST-I band, `D h / (2 sin^2(pi k / 2N))`, then maps to `2 D T^2 / (pi k)^2`
+at `m = 0` as `N -> infinity`. `examples/continuous_basis_check.py` verifies the identity numerically.
 
-Under `continuous` the tensors are the ones listed for `bridge_dst` (and for the C2 and `susc_path_dct`
-rows below), keyed and shaped alike, and the integer band container applies unchanged; the stored
-vector is still `[r(0), r(T) - r(0), beta_1 .. beta_K]`. What differs is the meaning of `beta` and what
-is absent: `n_t` is omitted from `compression.channels[*]` (the `static` descriptor, `susc_path_dct`'s
-parameters) and from `walk_params`, since a continuous walk has no saves. A reader MUST read
-`compression.basis` before it reads a tensor and MUST refuse a value it does not know: a `continuous`
-band decoded as a `dst1` one is a plausible number on the wrong basis and the wrong scale. The C1 kinds other than `static` are columns on the saves and are not defined for a continuous
-pack (SPEC §9.5.6).
+### Refused forms
 
-### Retired position codecs
+A reader MUST refuse, by name and with the instruction to re-walk (SPEC §9.5.1), a pack carrying any of:
 
-`temporal_dct`, `lowrank`, `gaussian` and `marginal` are no longer readable. This is a refusal
-rather than a deprecation because the failure would otherwise be silent: `bridge_dst` puts the
-two endpoints in the tensor positions a band codec fills with its two lowest bands, under the
-same keys and with the same shape family. Decoding one as the other returns a trajectory that
-looks like a trajectory. A pack declaring a retired method MUST be re-encoded from its master.
+- the metadata keys `n_t` or `dt_traj` (in `walk_params`, its window table, or anywhere under `compression`) or `compression.basis`;
+- the codec `identity`, and the tensors that go with it: `positions`, `compartment`, `boundary_local_time`, `susc_field_basis`, `dlog_boundary_unit`;
+- the occupancy and contact forms on a grid: `comp_rle_vals`/`comp_rle_lens`/`comp_rle_counts`, `bound_rle_*`, `blt_counts`/`blt_cols`/`blt_qvals`, `blt_dense_q`, and any `<name>_rle_*`;
+- the retired position codecs `temporal_dct`, `lowrank`, `gaussian` and `marginal` (`dct_coeffs`, `modes`), the retired `blt_dct_coeffs`, and the retired `bfrac_rle_*` keys of MT as a channel of its own (it is the `bound` column of `compartment`, SPEC §5.2, §6.5).
 
-The per-walker physics channels each use a structure-matched **storage codec** (SPEC §9.3) —
-they are **not** positions-like, so the representations above do not apply:
+This is a refusal rather than a conversion because the failure would otherwise be silent: the band tensors
+of a pack on a save grid have the same keys and the same shape family as those of this revision, and a retired
+position codec puts its two lowest bands where `bridge_dst` puts its endpoints. Decoding one as the other
+returns a trajectory that looks like a trajectory. Such a pack is re-walked.
+
+## Occupancy and the physics channels
+
+The per-walker physics channels each use a structure-matched **storage form** (SPEC §9.3) —
+they are **not** positions-like, so the representation above does not apply:
 
 | Decoded channel | Codec | Stored keys | Notes |
 |---|---|---|---|
-| `compartment` → `comp` column, one label per walker | **static** | `comp_static` `(N_w,)` int8 | The label of every save is the walker's first: nothing crossed (an impermeable substrate). Descriptor `kind: "static"`, `n_t`. A producer MUST write this form when it applies, and MUST NOT when any walker changes label. |
-| `compartment` → `comp` column (integer labels) | row run-length (RLE) | `comp_rle_vals`, `comp_rle_lens`, `comp_rle_counts` | lossless; long constant runs. Descriptor `kind: "label"`. |
-| `compartment` → any column (fractional occupancy) | **quantized RLE** | `<name>_rle_vals` (uint8, `Q≤256`), `<name>_rle_lens` (uint16), `<name>_rle_counts`; descriptor `kind: "fraction", Q, scale` | Occupancy is ~binary with long runs, so RLE is the codec; quantize `[0, scale]→{0..Q-1}` (`Q` default 256) because integer RLE would lossily int-cast the fractions. Two cases use it: the `comp` column on a **permeable** substrate (a walker crossing a membrane mid-save has a fractional time-in-compartment) and the `bound` column of an MT pack (dwell/free runs; measured **~7×**, replay error ≪ MC floor). Lossy only to the quantization step. |
-| `boundary_local_time` | **`bridge_dst`** — two exact endpoints + DST-I bands of the pinned cumulative (meta `mode: "bridge_dst"`); the bands in the **float container** `blt_bridge_dst` `(N_w, K)` (float16 or float32, meta `dtype`) **or the integer band container** `blt_b<i>` per range with `blt_band_scale` `(n_blocks, K)` and the shared `band_block` (meta `container`, `dtype: "bands"`), the same rule as positions | `blt_bridge_dst` or `blt_b<i>` + `blt_band_scale`; `blt_start` (f32), `blt_endpoint` (f32) | The **default** size form. The cumulative `L(n)=Σ ℓ` is smooth and near-linear, so it takes the same split as C0: hold both endpoints and expand only the doubly-pinned residual. Chosen for **exactness, not error** — DST-I beats DCT-II by only 1.0–1.3× on `L` and the slopes match (−0.96 vs −0.99), but a truncated *cosine* residual does not vanish at `n=N_t`, so replay misses the stored total by 1.6–6.4% at **every** `K` and segment chaining drifts ~1.5e-2 regardless of `S`; the sine form is identically zero there. Endpoints stay float32 (they are read by subtraction, §6.3); bands may be float16. Lossless at `K = N_t − 2`. |
-| `boundary_local_time` | **density-aware**: sparse CSR **or** dense int8 (meta `mode`) | sparse: `blt_counts`,`blt_cols`,`blt_qvals`; dense: `blt_dense_q` (int8) | not low-rank (idiosyncratic wall contacts). Density varies by substrate: isolated fibres ~15% nonzero → **sparse** (~3×); packed white matter ~55% → sparse would exceed raw float16, so **dense int8** (1 B/entry, ½ of raw f16, density-independent). Encoder picks the smaller; per-save values kept (any sequence gate, §6.6); quantization within the MC floor. |
-| `susc_field_basis` | raw **float16** (lossy only to f16) | `susc_field_basis` `(N_w, N_t, 13)` | Per-walker Field basis (SPEC §6.4.1). Always valid, walker-preserving, and the only form that carries no envelope restriction. |
-| `susc_field_basis` | **`susc_path_dct`** — temporal DCT-II, `K` modes, integer container (meta `bits`, default **8**) | `susc_path_dct` `(N_w, n_ch, K)` int8/int16, `susc_path_scale` `(n_ch, K)` float32 | The size form; **capability-narrowing** (SPEC §9.4 rule 5) — see below. Above its mean the sampled field is nearly white (band variance falls ~1 decade over 63 bands, slope ≈ −0.6, against ≈ −2 for a trajectory), so the transform buys no energy compaction — it buys a basis in which the **gate** is sparse, and the distortion weight is `ε̂_k²`. Bits, not `K`, is therefore the graded knob: int8 at full `K` is half of float16 and beats `K/2` at float16 at equal bytes **while keeping** the refocusing capability truncation forfeits. `bits: null` stores raw floats (the only mode that can be lossless at `K = N_t`). `susc_path_scale` is not walker-indexed and so is read whole. |
+| `compartment` → a column, one label per walker | **static** | `comp_static` `(N_w,)` int8 (`bound_static` for the `bound` column) | The label of the walker over the whole walk: nothing crossed (an impermeable substrate, no binding). Descriptor `kind: "static"`. A producer MUST write this form when it applies, and MUST NOT when any walker changes label. |
+| `compartment` → a column, labels changing in time | **events** | `<c>_events_offsets` `(N_w + 1,)` int64, `<c>_events_t` `(N_ev,)` float64, `<c>_events_label` `(N_ev,)` int8 (int16 where a pool id exceeds 127), with `<c>` = `comp` or `bound` | Descriptor `kind: "events"`. Walker `i`'s events are the entries `offsets[i] .. offsets[i+1]-1`. `t` is in **seconds from the walk's start**, `label` is the label **entered** at `t`: a pool id for `comp`, `0` free / `1` bound for `bound`. Every walker's first event is at `t = 0` and gives its initial label; one walker's times strictly increase within `[0, T_max]`; no event repeats the label before it. The walker holds `label_j` on `[t_j, t_{j+1})` and its last label to `T_max`. A crossing, a binding and an unbinding are one event each. In a window table each window's list holds its own events, times still from the walk's start, opening with an event at the window's start. A producer that caps the events per walker MUST refuse on overflow rather than drop an event. The `bound` run intervals are the dwell times. |
+| `boundary_local_time` | **`bridge_dst`** — two exact endpoints + sine bands of the pinned cumulative `B(t)` (meta `mode: "bridge_dst"`); the bands in the **float container** `blt_bridge_dst` `(N_w, K)` (float16 or float32, meta `dtype`) **or the integer band container** `blt_b<i>` per range with `blt_band_scale` `(n_blocks, K)` and the shared `band_block` (meta `container`, `dtype: "bands"`), the same rule as positions | `blt_bridge_dst` or `blt_b<i>` + `blt_band_scale`; `blt_start` (f32), `blt_endpoint` (f32) | The cumulative `B(t)` is smooth and nondecreasing, so it takes the same split as C0: hold both endpoints and expand only the doubly-pinned residual. A truncated *cosine* residual does not vanish at `t = T`, so replay would miss the stored total by percent at **every** `K` and segment chaining would drift; the sine form is identically zero there. Endpoints stay float32 (they are read by subtraction, §6.3); bands may be float16. The walk records `walk_params.qv.local_time` for the certificate. |
+| `susc_field_basis` | **`susc_path_dct`** — `K` temporal modes of the field `b(t)`, integer container (meta `bits`, default **8**) | `susc_path_dct` `(N_w, n_ch, K)` int8/int16, `susc_path_scale` `(n_ch, K)` float32 | The only form of this channel; **capability-narrowing** (SPEC §9.4 rule 5) — see below. The modes are `c_k = int_0^T e_k(t) b(t) dt`, `e_0 = T^(-1/2)`, `e_k = sqrt(2/T) cos(pi k t / T)`, the sine bands of `F = int b dt` (SPEC §9.5.3). Above its mean the sampled field is nearly white (band variance falls ~1 decade over 63 bands, slope ≈ −0.6, against ≈ −2 for a trajectory), so the transform buys no energy compaction — it buys a basis in which the **gate** is sparse, and the distortion weight is `ε̂_k²`. Bits, not `K`, is therefore the graded knob: int8 at full `K` is half of float16 and beats `K/2` at float16 at equal bytes **while keeping** the refocusing capability truncation forfeits. `bits: null` stores raw floats. `susc_path_scale` is not walker-indexed and so is read whole. The walk records `walk_params.qv.field` and `walk_params.field_read_interval` for the certificate. |
 
-Codec parameters (`Q`, `scale`, `nlevels`, `n_t`) live under `compression.channels[<channel>]` in
-the metadata. Per-column descriptors (`name`, `kind`, `Q`, `scale`, `n_t`) live under
-`compression.channels.compartment.columns`. The reference implementation also historically stored
-`boundary_local_time` raw under the legacy key `dlog_boundary_unit`; readers SHOULD accept that raw
-alias across the `0.x` line. There is **no** separate `bound_fraction` channel: the MT bound pool is
-a `bound` column of `compartment` (SPEC §5.2, §6.5), and a pack carrying the retired `bfrac_rle_*`
-keys predates this and MUST be re-encoded.
+Codec parameters (`Q`, `scale`, `nlevels`) live under `compression.channels[<channel>]` in
+the metadata, and no descriptor carries `n_t`. Per-column descriptors (`name`, `kind`) live under
+`compression.channels.compartment.columns`. There is **no** separate `bound_fraction` channel: the MT bound pool is
+a `bound` column of `compartment` (SPEC §5.2, §6.5).
 
-**Why these are separate codecs.** The positions codecs (low-rank/DCT) exploit temporal
-smoothness and cross-walker correlation. Occupancy columns (near-binary step processes) and
-`boundary_local_time` (a sparse sum of discrete contact events) have neither property — low-rank
-needs `K>32` and still misses the noise floor on `boundary_local_time` — so RLE and sparsity,
-respectively, are the structure-matched choices.
+**Why these are separate codecs.** The positions codec exploits temporal smoothness. Occupancy columns
+(step processes in time) and `boundary_local_time` (a sparse sum of discrete contact events) have a different
+structure, so an event list and a bridge of the cumulative are the structure-matched choices.
 
 **Not registered, and why.** Reducing the `n_ch` components to a few combinations of them was
 measured and **rejected**: they are strongly correlated (rank 4 holds 97% of the variance) but a
@@ -173,80 +146,72 @@ in frequency, never across channels.
 
 ### `susc_path_dct` — the per-walker Field basis in `K` temporal modes
 
-**Encode.** Sample the field-basis grids along each walker's **full-resolution** trajectory, then take an
-orthonormal DCT-II along time of each component and keep the first `K` coefficients, stored float16 as
-`susc_path_dct` `(N_w, n_ch, K)`. Sampling *before* compressing is the whole point: `φ^χ` is non-linear in
-`r`, so no truncated representation of `r(t)` has a Parseval shortcut for it — but the field along a path
-is far redder in time than `r(t)` is, so it compresses where the trajectory does not. This also
-**decouples** the Field tier from the position representation: positions are free to be lossy, because
+**Encode.** The walk accumulates `c_k = int e_k b dt` for each component of the field basis at the walker's own
+position, at its reads (SPEC §9.5.5), and the pack stores the first `K` as integers with a per-(channel, band) scale
+as `susc_path_dct` `(N_w, n_ch, K)`. Reading the field at the walk's position, never along the stored bands, is
+the whole point: `φ^χ` is non-linear in `r`, so no truncated representation of `r(t)` has a Parseval shortcut for
+it — but the field along a path is far redder in time than `r(t)` is, so it compresses where the trajectory does
+not. This also **decouples** the Field tier from the position representation: positions are band-limited, and
 nothing re-samples a grid at decoded coordinates.
 
 **`n_ch`.** `13` in general; `12` when `iso_P_zz` is dropped under the SPEC §5.3 trace identity and
 reconstructed on decode; `6` when the source is purely isotropic (no `aniso_G` block). Stored order is the
 §5.3 order with the omitted components removed, and `channels` lists the retained names.
 
-**Decode to the §5.2 contract.** Inverse DCT-II back to `N_t`; re-insert
+**Decode to the §5.2 contract.** Evaluate `b(t) = sum_k c_k e_k(t)` at an instant; re-insert
 `iso_P_zz = 3·iso_local − iso_P_xx − iso_P_yy` where `iso_P_zz: "implied"`; insert an all-zero `aniso_G`
-block where absent; and transpose to component-**last** `(N_w, N_t, 13)`.
+block where absent; and order the components as §5.3.
 
-**Parameters** under `compression.channels["susc_field_basis"]`: `K`, `n_t`, `n_ch`, `channels`,
+**Parameters** under `compression.channels["susc_field_basis"]`: `K`, `n_ch`, `channels`,
 `iso_P_zz` (`"implied"` | `"stored"`), `trace_residual`, `dtype`, `max_refocus_pulses`.
 
-**Loss.** Lossless at `K = N_t` (to within `dtype`). Below that the loss is **not** a uniform accuracy
+**Loss.** There is no full rank: the series is a band-limited `b(t)`. The loss is **not** a uniform accuracy
 degradation but a **gate-bandwidth limit**. On the scalar-phase path this is exact: by orthonormality
-`Σ_k s(t_k)·b(t_k) = Σ_m ŝ(m)·b̂(m)`, so truncation discards only the gate's out-of-band content, and a
+`∫ s(t)·b(t) dt = Σ_k ŝ_k c_k`, so truncation discards only the gate's out-of-band content, and a
 narrowband gate is unaffected. On the **vector-Bloch** path, which decodes `b(t)` pointwise, the reference
 implementation's measured requirement is `K ≥ 2·n_refocus`. A pack using this codec MUST therefore declare
 `replay_envelope.acquisition.max_refocusing_pulses` (≈ `K/2`) alongside its `fidelity` (SPEC §9.4 rule 5),
 and its `fidelity` battery MUST include a refocused (spin-echo / CPMG) acquisition — the small-difference
 cancellation a truncated Field basis breaks first.
 
-**Do not ship the §6.4 grid maps in the same pack as this codec over lossy positions.** The grid route
-samples the field at codec-*decoded* coordinates and so is sound only while the position representation is
-lossless; the path route samples the full-resolution walk at build time. Advertising both next to lossy
-positions offers a replay route whose accuracy silently depends on a property the pack no longer has. Ship
-the grid as a per-substrate companion artefact instead, and record which route the pack offers.
+**Do not ship the §6.4 grid maps in the same pack as this codec.** The grid route samples the field at the
+band-limited decoded path, a quadrature at the band's resolution; the path route accumulates it at the walk's own
+position. Advertising both offers a replay route whose accuracy depends on a property the pack no longer has.
+Ship the grid as a per-substrate companion artefact instead, and record which route the pack offers.
 
 ## Replay in coefficient space (the representation mechanics)
 
 This is the mechanics of the position *representation* defined in SPEC §9.1; its exactness
-*domain* — raw exact to the `Δt` grid, a full basis coincident with raw, a truncated basis exact
-only within its span — is SPEC §9.2 and is not restated here.
+*domain* — exact endpoints, exact within the span of the `K` modes, bounded and certified outside it — is SPEC §9.2
+and is not restated here.
 
 `bridge_dst` stores positions as `r = M·c` with a basis `M` **shared across walkers** — the
 constant, the ramp, and the sine functions — and per-walker coefficients `c`.
 Because the gradient phase (SPEC §6.1) is **linear** in position, it factors through the basis:
 
 ```
-φ_i = γΔt Σ_k G(t_k)·r_i(t_k) = c_i · (γΔt Mᵀ G_flat) + const,
+φ_i = γ ∫ G(t)·r_i(t) dt = c_i · (γ Mᵀ G) + const,
 ```
 
-so a replayer MAY contract the waveform against the basis **once** and evaluate every walker's
-phase from its stored coefficients, never materializing the `(N_w, N_t, 3)` position array. The
-per-compartment relaxation (§6.2) and surface-relaxivity (§6.3) log-weights are likewise
-separable per-walker sums that need no position decode. This is a **pure performance
-optimization**: the result MUST equal the decode-then-replay value (SPEC §6), and it changes
-neither the stored keys nor conformance.
+so a replayer contracts the waveform against the basis **once**, in closed form over the waveform's pieces
+(SPEC §9.5.3), and evaluates every walker's phase from its stored coefficients, never materializing the
+trajectory. The per-compartment relaxation (§6.2) and surface-relaxivity (§6.3) log-weights are likewise
+separable per-walker quantities (a sum over the runs of the occupancy; a difference of two reads of `B(t)`)
+that need no position decode.
 
 The **grid-map** off-resonance/susceptibility operation (§6.4) samples a field map at
 `r mod cell_size` — a **nonlinear** function of position — and the **Bloch/MT** operation (§6.5)
-evolves magnetization step by step; both REQUIRE the decoded positions. A replayer therefore
-takes the coefficient-space fast path for the position-linear tiers (Gradient, Bulk-relaxation,
-Surface) and falls back to decoded positions for the grid-map Field and Magnetization-transfer
-tiers. (The **per-walker** Field basis of §6.4.1 is the exception: it is *pre-sampled* per walker,
-so its phase is a per-walker separable sum — like the surface log-weight — needing **no** position
-decode, and it composes with the coefficient-space fast path. Under `susc_path_dct` the sum is itself a
-coefficient-space contraction, `Σ_k s(t_k)·b(t_k) = Σ_m ŝ(m)·b̂(m)`, so the scalar-phase route never
-materializes `b(t)` either; the Bloch route does.) This is one reason to prefer a
-linear-basis **representation**: it is not only smaller but also directly replayable — the IR
-property of SPEC §9.1.
-
-The `identity` codec stores positions raw, so it has no coefficient space. There is no coefficient space for a raw pack, so the fast path applies only to
-`bridge_dst`.
+evolves magnetization over time; both REQUIRE the position evaluated at instants (SPEC §9.5.4). A replayer therefore
+takes the coefficient-space path for the position-linear tiers (Gradient, Bulk-relaxation,
+Surface) and evaluates the function at instants for the grid-map Field and Magnetization-transfer
+tiers. (The **per-walker** Field basis of §6.4.1 is the exception: it is *accumulated* per walker, so its phase is a per-walker
+separable sum — like the surface log-weight — needing **no** position decode, and it composes with the
+coefficient-space path. Under `susc_path_dct` the sum is itself a coefficient-space contraction,
+`∫ s(t)·b(t) dt = Σ_m ŝ_m c_m`, so the scalar-phase route never materializes `b(t)` either; the Bloch route does.)
+This is one reason for the representation: it is not only compact but directly replayable (SPEC §9.1).
 
 ## Adding a codec
 
 A new codec entry MUST document: `method` name, class (walker-preserving vs distributional),
-its stored tensor keys, its parameters, and whether it is lossless or (if lossy) how its
-`fidelity` is measured (SPEC §9.4). Add it here and bump the registry version; the core
-`rpk_schema_version` does **not** change for a registry-only addition.
+its stored tensor keys, its parameters, and how its `fidelity` is measured (SPEC §9.4). Add it here and bump the
+registry version; the core `rpk_schema_version` does **not** change for a registry-only addition.
