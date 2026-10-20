@@ -12,6 +12,7 @@ Exit code 0 = conformant, 1 = not. Apache-2.0.
 """
 import json
 import os
+import re
 import sys
 import numpy as np
 from safetensors import safe_open
@@ -61,8 +62,23 @@ INSTRUCTION = ("this revision does not read it: re-walk the pack with a conforma
                "(SPEC §9.5.1). A pack is never converted.")
 
 
+def _channel_keys(keys):
+    """`keys` with every ranged band tensor also counted under its channel's base name.
+
+    The registry writes a band container of several ranges as `<base>_b<i>` (int8 / int16) or
+    `<base>_b<i>u<bits>` (bit-packed); the channel it realizes is the one `<base>` names.
+    """
+    out = set(keys)
+    for k in keys:
+        m = re.fullmatch(r"(.+)_b\d+(u\d+)?", k)
+        if m:
+            out.add(m.group(1))
+    return out
+
+
 def _present(channel, keys):
     """True iff `channel` is realized by any registry key-group present in `keys`."""
+    keys = _channel_keys(keys)
     return any(all(k in keys for k in group) for group in CHANNEL_KEYS.get(channel, [[channel]]))
 
 
@@ -189,7 +205,7 @@ def check(path):
             missing = [c for c in chans if not _present(c, keys)]
             if missing:
                 errs.append(f"replay_envelope.{flag}=true but missing channel(s) {missing} (SPEC §7/§13)")
-    if env.get("field") and "susc_path_dct" in keys:
+    if env.get("field") and "susc_path_dct" in _channel_keys(keys):
         if "field" not in (wp.get("qv") or {}) or "field_read_interval" not in wp:
             errs.append("susc_path_dct without walk_params.qv.field and field_read_interval (SPEC §9.5.5)")
         if (env.get("acquisition") or {}).get("max_refocusing_pulses") is None:
