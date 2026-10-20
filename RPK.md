@@ -509,6 +509,7 @@ the sum of the squared increments over the walk, averaged over the walkers. The 
 | `positions` | C0, `r(t)` | m² | `[QV_x, QV_y, QV_z]`, one per axis. Free diffusion has `2 D T`; a wall only lowers it |
 | `local_time` | C2, `B(t)` | m² | `Σ dℓ²` over the contact increments, with `ρ/D = 1` (§6.3). A point process, not Brownian; present iff `boundary_local_time` is |
 | `field` | C3, `F(t) = ∫ b dt` | s² | one `Σ (b dt_f)²` per component of `susc_field_basis`, in the order of `compression.channels.susc_field_basis.channels`, over the field reads (below); smooth and small. Present iff `susc_field_basis` is |
+| `field_increments` | C3, the read series `b_i` | — (dimensionless²) | one `Σ (b_{i+1} − b_i)²` per component of `susc_field_basis`, same order, over the field reads; it sets `fidelity.terms.field_read` (below). Present iff `susc_field_basis` is |
 
 *The relative figure.* The block quadrature perturbs band `k` of a channel by an error independent of the others, whose variance is at most
 
@@ -536,13 +537,14 @@ v_c = Σ_k g_{c,k}² · rel(m, ω_k h) · ( T / (π k)² ) · QV_c ,
 
 and the signal is biased by at most `½ v_c` times `|S|`. On a free walk (C0) this is at most `½ · rel(m, π K h / T) · 2 b D`, with `b` the b-value (s·m⁻²) of the measurement and `D` the largest free diffusivity of the walk: it does not depend on the walker count or on the substrate, only on the band and on the `b` the pack can reach (`replay_envelope.acquisition.b_max`). The certificate carries `v_c / 2` per channel (below). The quadrature term does not include the rounding of the accumulation, which a producer with `precision = "float32"` MUST measure and carry in `err_max` as the term `rounding` (below).
 
-*The field read.* The field channel is accumulated at the walk's own position, at the step, and is never read from the stored bands: the bands are a band-limited path, and a read of a micron-scale field along them is a quadrature at the band's resolution. `walk_params.field_read_interval = dt_f` (s) records the interval between the walk's reads of the field; it is REQUIRED iff `susc_field_basis` is present. Between reads the walker moves `sqrt(2 D dt_f)`, and the midpoint rule along a path of that roughness adds to the field phase an independent term of variance about
+*The field read.* The field channel is accumulated at the walk's own position, at the step, and is never read from the stored bands: the bands are a band-limited path, and a read of a micron-scale field along them is a quadrature at the band's resolution. `walk_params.field_read_interval = dt_f` (s) records the interval between the walk's reads of the field; it is REQUIRED iff `susc_field_basis` is present. Between reads the walker moves `sqrt(2 D dt_f)`, and the trapezoid of two consecutive reads, `(b_i + b_{i+1}) dt_f / 2`, misses the path's deviation from the chord. Over a walk that deviation adds to the field phase an independent term whose variance is set by the field the walker ACTUALLY crossed, the quadratic variation of the read series, which the walk records per component in `walk_params.qv.field_increments`:
 
 ```
-v_read = (γ B0 χ)² · 2 D T_e · |∇b|² · dt_f² ,
+QV_Δb  = Σ_i (b_{i+1} − b_i)²            ≈ 2 D ∫ |∇b(x(t))|² dt ,
+v_read = (γ B0 χ)² · dt_f² / 12 · QV_Δb ,
 ```
 
-with `B0` (T) and `χ` (dimensionless, SI) the field strength and susceptibility scale of the replay, `D` the largest free diffusivity of the walk, `T_e` the acquisition's duration, and `|∇b|` (m⁻¹) the largest gradient of the field over the sheath -- the thinnest shell sets it. The gate bounds `|s| ≤ 1`. `dt_f` is chosen from the field's spatial scale and `D`, holding `v_read` below the square of the floor at the envelope's `B0` and `χ`; it depends on no walker count and on no sampling of the stored path.
+with `B0` (T) and `χ` (dimensionless, SI) the field strength and susceptibility scale of the replay and the `1/12` the trapezoid's constant for a field linear over one read (the chord's curvature across a sheath raises it; a producer that measures a larger constant on a pilot states it). The gate bounds `|s| ≤ 1`. `QV_Δb` is a measured property of the walk, like the positions' `QV`: it costs one register per component (the previous read, which the trapezoid keeps anyway) and is independent of any assumed maximum of the field. `dt_f` is chosen from a pilot's `QV_Δb` per pool, the coarsest interval holding `v_read` below the square of the floor at the envelope's `B0` and `χ`; it cannot usefully be finer than the walk's step (a read along the chord between steps carries the same deviation), and when the floor would ask for less the read is the step and the envelope states the `B0 · χ` product under which the term stays below the floor (§9.4 rule 5). A merge of shards with their own intervals states the coarsest and charges the term at it.
 
 *The certificate.* A pack has no raw walk to be decoded against, so its `fidelity` (§9.4 rule 4) reports its bounded errors as separate terms in `fidelity.terms`, each a bound on the replay error over the battery in the units of `err_max`, the largest over the battery:
 
@@ -550,7 +552,7 @@ with `B0` (T) and `χ` (dimensionless, SI) the field strength and susceptibility
 |---|---|
 | `truncation` | the bands beyond `K`. Walk-free, from the free-bridge band variances of §9.5.6 weighted by the battery waveforms' projections; or measured on a pilot subset as `K` against `2K` bands accumulated in the same walk, which `truncation_from` (`"band_variance"` or `"pilot"`, OPTIONAL) records. REQUIRED |
 | `quadrature` | an object with one number per channel, `½ v_c`: `positions` always, `local_time` iff C2, `field` iff the field channel is present. Each is `½ Σ_k g_{c,k}² rel(m, ω_k h) (T/(π k)²) QV_c` with the `QV_c` of `walk_params.qv`. REQUIRED |
-| `field_read` | `½ v_read` of the field read above. REQUIRED iff `walk_params.field_read_interval` is present |
+| `field_read` | `½ v_read` of the field read above, from `walk_params.qv.field_increments` at `walk_params.field_read_interval`. REQUIRED iff `walk_params.field_read_interval` is present |
 | `rounding` | the rounding of the accumulation across blocks: with `r` the measured relative residual of the chain (the producer's `k = 0` mode against the exact displacement, the largest over the walkers), a phase error correlated with the phase, bounded by `r · sqrt(2 · b_max · D)` with `b_max` the battery's largest b-value and `D` the largest free diffusivity. REQUIRED iff `walk_params.block.precision` is `"float32"` |
 
 `err_max` is at least the sum of the terms. Quantisation by a container is part of `err_max` as for any pack, and the split-half floors (`floor_max`, per voxel where partitioned) are read from the coefficients as ever. The terms are measured once against a per-step accumulation (h = the step) -- the slab for C0, a reflecting pore at the envelope's `ρ_max` for C2, a sheath for C3 -- and the signal against the forward engine within the floor; agreement of the bands alone is not the certificate.
@@ -595,7 +597,8 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
                "precision": "float64" }, //   accumulator type
     "qv": { "positions": [1.2e-10, 1.2e-10, 1.2e-10],   // REQUIRED (§9.5.5): the quadratic variation per
             "local_time": 3.0e-14,                      //   channel, m^2 (positions, local_time) and s^2 (field);
-            "field": [4.0e-14, 1.0e-14] },              //   local_time iff C2, field iff susc_field_basis
+            "field": [4.0e-14, 1.0e-14],                //   local_time iff C2, field iff susc_field_basis
+            "field_increments": [2.0e-9, 5.0e-10] },     //   Σ (Δb)² per component, iff susc_field_basis
     "field_read_interval": 2.0e-6,       // s; REQUIRED iff susc_field_basis (§9.5.5)
     "boundary": "periodic",              // OPTIONAL "periodic" | "reflecting" | "finite";
                                          //   the walk's box (§4.5) + bounds the envelope

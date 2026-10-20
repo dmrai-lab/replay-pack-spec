@@ -231,6 +231,15 @@
               },
               "minItems": 1,
               "description": "QV of F(t) = int b dt per component of susc_field_basis (s^2); iff the field channel is present."
+            },
+            "field_increments": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "minItems": 1,
+              "description": "Quadratic variation of the read series per component of susc_field_basis, sum (b_{i+1} - b_i)^2 over the field reads (dimensionless); iff the field channel is present. It sets fidelity.terms.field_read (SPEC 9.5.5)."
             }
           }
         },
@@ -780,7 +789,8 @@
             "properties": {
               "qv": {
                 "required": [
-                  "field"
+                  "field",
+                  "field_increments"
                 ]
               }
             }
