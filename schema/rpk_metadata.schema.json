@@ -148,7 +148,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Order of the 13 basis channels, e.g. [\"iso_local\",\"iso_P\",\"aniso_G\"]."
+              "description": "Order of the stored basis channels (12 in general: iso_P_zz is implied by the trace identity and never stored), e.g. [\"iso_local\",\"iso_P\",\"aniso_G\"]."
             },
             "refocus": {
               "type": "string",
