@@ -154,16 +154,14 @@ it — but the field along a path is far redder in time than `r(t)` is, so it co
 not. This also **decouples** the Field tier from the position representation: positions are band-limited, and
 nothing re-samples a grid at decoded coordinates.
 
-**`n_ch`.** `13` in general; `12` when `iso_P_zz` is dropped under the SPEC §5.3 trace identity and
-reconstructed on decode; `6` when the source is purely isotropic (no `aniso_G` block). Stored order is the
-§5.3 order with the omitted components removed, and `channels` lists the retained names.
+**`n_ch`.** `12` in general: `iso_P_zz` is never stored (SPEC §5.3: the trace identity holds by construction of the stored set); fewer when the source is purely isotropic (no `aniso_G` block, `6`) or when a component is zero for every walker (`zero_components`). Stored order is the §5.3 order with the omitted components removed, and `channels` lists the retained names. A shard carrying `iso_P_zz` is refused by name.
 
-**Decode to the §5.2 contract.** Evaluate `b(t) = sum_k c_k e_k(t)` at an instant; re-insert
-`iso_P_zz = 3·iso_local − iso_P_xx − iso_P_yy` where `iso_P_zz: "implied"`; insert an all-zero `aniso_G`
-block where absent; and order the components as §5.3.
+**Decode to the §5.2 contract.** Evaluate `b(t) = sum_k c_k e_k(t)` at an instant; form
+`iso_P_zz = 3·iso_local − iso_P_xx − iso_P_yy`; insert an all-zero `aniso_G` block where absent and zeros for every
+`zero_components` entry; and order the components as §5.3.
 
 **Parameters** under `compression.channels["susc_field_basis"]`: `K`, `n_ch`, `channels`,
-`iso_P_zz` (`"implied"` | `"stored"`), `trace_residual`, `dtype`, `bits` or `container` (the mode ranges and their depths), `max_refocus_pulses`.
+`zero_components`, `trace_residual` (diagnostic), `dtype`, `bits` or `container` (the mode ranges and their depths), `max_refocus_pulses`.
 
 **Loss.** There is no full rank: the series is a band-limited `b(t)`. The loss is **not** a uniform accuracy
 degradation but a **gate-bandwidth limit**. On the scalar-phase path this is exact: by orthonormality
