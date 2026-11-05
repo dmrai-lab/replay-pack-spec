@@ -329,8 +329,38 @@
                 "minimum": 3,
                 "maximum": 16,
                 "description": "The depth of the range: 8 and 16 are native int8 / int16 tensors, every other depth a bit-packed uint8 row (registry 0.7)."
+              },
+              "codec": {
+                "type": "string",
+                "description": "How the range's integers are stored (registry, 'Container option: codec'). Absent: the fixed-width container. \"bitshuffle-zlib\": zigzag integers, bit-transposed in blocks of 4096 elements and deflated per chunk of chunk_walkers walkers. A reader that does not implement the named codec MUST refuse the pack by that name."
+              },
+              "chunk_walkers": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Walkers per chunk of a range stored with a codec: a power of two (4096 recommended). Required with a codec; absent without one."
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "codec"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "chunk_walkers"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "chunk_walkers"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         "temporal_bandwidth_hz": {
