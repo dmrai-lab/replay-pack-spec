@@ -47,7 +47,7 @@ There is **one** C0 representation.
 | `method` | Class | Stored keys | Notes |
 |---|---|---|---|
 | `bridge_dst` | walker-preserving | **float container**: `pos_x`, `pos_y`, `pos_z`, each `(N_w, K+2)` float32 | two exact endpoints, then `K` sine bands of the pinned residual |
-| `bridge_dst` (integer band container) | walker-preserving; the bands quantised per band | per axis `pos_x_ends` `(N_w, 2)` float32 and, per band range `i` of `bits` bits, `pos_x_b<i>` `(N_w, k1-k0)` int16 or int8 when `bits` is 16 or 8, else the **bit-packed** row `pos_x_b<i>u<bits>` `(N_w, ceil((k1-k0) * bits / 8))` uint8; `pos_band_scale` `(n_blocks, n_axes, K)` float32; optional `band_block` `(N_w,)` uint16 / int32 | `compression.container` lists the ranges `[{bands: [k0, k1], bits}, ...]` covering `0 .. K-1`, `bits` an integer in `3 .. 16`. Band `k` of walker `w` on axis `a` is `q * pos_band_scale[block(w), a, k]`, with `block(w) = band_block[w]` (0 when absent). The scale of a band is `max_w |beta_k| / (2^(bits-1) - 1)` over the block's walkers. A bit-packed range holds its bands side by side in one row per walker, each as the offset-binary `q + 2^(bits-1)` in `bits` bits, most significant bit first, the last byte padded with zero bits; the depth is in the tensor's name so that a reader without the metadata unpacks it. A reader MUST refuse a pack whose scale table has more than one block and no `band_block`. |
+| `bridge_dst` (integer band container) | walker-preserving; the bands quantised per band | per axis `pos_x_ends` `(N_w, 2)` float32 and, per band range `i` of `bits` bits, `pos_x_b<i>` `(N_w, k1-k0)` int16 or int8 when `bits` is 16 or 8, else the **bit-packed** row `pos_x_b<i>u<bits>` `(N_w, ceil((k1-k0) * bits / 8))` uint8; `pos_band_scale` `(n_blocks, n_axes, K)` float32; optional `band_block` `(N_w,)` uint16 / int32 | `compression.container` lists the ranges `[{bands: [k0, k1], bits}, ...]` covering `0 .. K-1`, `bits` an integer in `3 .. 16`. Band `k` of walker `w` on axis `a` is `q * pos_band_scale[block(w), a, k]`, with `block(w) = band_block[w]` (0 when absent). The scale of a band is `max_w |beta_k| / (2^(bits-1) - 1)` over the block's walkers. A range stored with a `codec` is described under *Container option: `codec`* below. A bit-packed range holds its bands side by side in one row per walker, each as the offset-binary `q + 2^(bits-1)` in `bits` bits, most significant bit first, the last byte padded with zero bits; the depth is in the tensor's name so that a reader without the metadata unpacks it. A reader MUST refuse a pack whose scale table has more than one block and no `band_block`. |
 
 The method name `bridge_dst` is the registered identifier of this representation. Per axis the stored
 vector is `[r(0), r(T) - r(0), beta_1 .. beta_K]`, where `beta` are the sine-basis coefficients of the
@@ -101,6 +101,32 @@ beta_k = sqrt(h) * sinc(pi k / (2N)) * b_k ,          sinc(x) = sin(x) / x .
 The free-bridge variance of the DST-I band, `D h / (2 sin^2(pi k / 2N))`, then maps to `2 D T^2 / (pi k)^2`
 at `m = 0` as `N -> infinity`. `examples/continuous_basis_check.py` verifies the identity numerically.
 
+### Container option: `codec`
+
+A band range of the integer band container (positions, `boundary_local_time`, `susc_path_dct`) is stored in one of two ways, named by the optional `codec` of its entry in `container`. Absent, the range is the **fixed-width** container above. `"bitshuffle-zlib"` is the second, a choice of bytes: the decoded integers are those of the fixed-width container, to the bit, and so are the scales, the dequantised bands and the certificate. A reader that does not implement the named codec MUST refuse the pack by that name; there is no fallback and no guess.
+
+```
+{"bands": [k0, k1], "bits": b, "codec": "bitshuffle-zlib", "chunk_walkers": 4096}
+```
+
+`chunk_walkers` is a power of two (4096 RECOMMENDED), REQUIRED with a codec and absent without one. The range is stored as two tensors in place of the fixed-width one:
+
+| tensor | dtype, shape | content |
+|---|---|---|
+| `<base>_b<i>z<bits>` | uint8 `(S,)` | the chunk streams, one after the other |
+| `<base>_b<i>z<bits>_chunks` | int64 `(n_chunks + 1,)` | `n_chunks = ceil(N_w / chunk_walkers)`; chunk `c` is bytes `[chunks[c], chunks[c+1])` of the stream; `chunks[0] = 0`, `chunks[n_chunks] = S` |
+
+A chunk holds the walkers `[c * chunk_walkers, min((c + 1) * chunk_walkers, N_w))`. Its **elements** are those walkers' band integers `q` of the range (the value the fixed-width container holds, without the offset) in C order: walker, then channel (`susc_path_dct` has `n_ch`; the others one), then band. The chunk is coded in four steps:
+
+1. **zigzag**: `u = (q << 1) XOR (q >> (w - 1))`, arithmetic shift, `w` the lane width; so `0, -1, 1, -2, ...` map to `0, 1, 2, 3, ...`.
+2. **lane**: `u` is held in an unsigned integer of `L` bits, `L = 8` for `bits <= 8` and `L = 16` otherwise. Every `q` the container can hold (`|q| <= 2^(bits-1) - 1`, and the full two's-complement range at 8 and 16 bits) fits.
+3. **bit transposition** in blocks of 4096 elements, the layout of the `bitshuffle` library for this element size (`block_size = 4096`): the element array is padded with zeros to a multiple of 4096; each block becomes `L` planes of 512 bytes in order of bit `p = 0 .. L-1` (least significant first), and plane `p` holds bit `p` of the block's 4096 elements, element `8j + i` at bit `i` (least significant first) of byte `j`. The blocks follow one another.
+4. **zlib** (RFC 1950, DEFLATE) over the whole transposed chunk. The compression level is the writer's.
+
+A reader reverses the steps and MUST check that the inflated length is `L * 512 * ceil(n_elements / 4096)` bytes. A walker prefix of `n` walkers is the chunks `0 .. ceil(n / chunk_walkers) - 1`: the bytes `[0, chunks[ceil(n / chunk_walkers)])` of the stream, one range read, and the `_chunks` table (8 bytes per chunk) is read whole. The scale tables and `band_block` are unchanged and are not coded.
+
+This is the middle road between the fixed-width container and entropy coding: the bands are near-Gaussian in a range sized to about five standard deviations, and the transposition makes the unused high bits runs that DEFLATE removes. It needs nothing beyond the Python standard library and NumPy to read; a library that implements the `bitshuffle` layout and a faster inflate may read the same bytes.
+
 ### Refused forms
 
 A reader MUST refuse, by name and with the instruction to re-walk (SPEC §9.5.1), a pack carrying any of:
@@ -109,6 +135,7 @@ A reader MUST refuse, by name and with the instruction to re-walk (SPEC §9.5.1)
 - the codec `identity`, and the tensors that go with it: `positions`, `compartment`, `boundary_local_time`, `susc_field_basis`, `dlog_boundary_unit`;
 - the occupancy and contact forms on a grid: `comp_rle_vals`/`comp_rle_lens`/`comp_rle_counts`, `bound_rle_*`, `blt_counts`/`blt_cols`/`blt_qvals`, `blt_dense_q`, and any `<name>_rle_*`;
 - the field grid as a field route: the tensors `susc_field_0`, `susc_field_C`, `susc_field_S` and the metadata key `walk_params.cell_size`;
+- a band range whose `container` entry names a `codec` the reader does not implement (the name is the reason);
 - the retired position codecs `temporal_dct`, `lowrank`, `gaussian` and `marginal` (`dct_coeffs`, `modes`), the retired `blt_dct_coeffs`, and the retired `bfrac_rle_*` keys of MT as a channel of its own (it is the `bound` column of `compartment`, SPEC §5.2, §6.5).
 
 This is a refusal rather than a conversion because the failure would otherwise be silent: the band tensors

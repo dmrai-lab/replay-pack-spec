@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import zlib
 import numpy as np
 from safetensors import safe_open
 
@@ -66,11 +67,12 @@ def _channel_keys(keys):
     """`keys` with every ranged band tensor also counted under its channel's base name.
 
     The registry writes a band container of several ranges as `<base>_b<i>` (int8 / int16) or
-    `<base>_b<i>u<bits>` (bit-packed); the channel it realizes is the one `<base>` names.
+    `<base>_b<i>u<bits>` (bit-packed) or `<base>_b<i>z<bits>` (a codec's chunk stream); the channel it realizes is the
+    one `<base>` names.
     """
     out = set(keys)
     for k in keys:
-        m = re.fullmatch(r"(.+)_b\d+(u\d+)?", k)
+        m = re.fullmatch(r"(.+)_b\d+([uz]\d+)?", k)
         if m:
             out.add(m.group(1))
     return out
@@ -80,6 +82,26 @@ def _present(channel, keys):
     """True iff `channel` is realized by any registry key-group present in `keys`."""
     keys = _channel_keys(keys)
     return any(all(k in keys for k in group) for group in CHANNEL_KEYS.get(channel, [[channel]]))
+
+
+CODECS = ("bitshuffle-zlib",)
+
+
+def _container_ranges(meta):
+    """`(where, base names, n_ch, [range entries])` of every integer band container the metadata declares."""
+    comp = meta.get("compression", {})
+    chans = comp.get("channels") or {}
+    out = []
+    if comp.get("container"):
+        out.append(("compression.container", ["pos_x", "pos_y", "pos_z"], 1, comp["container"]))
+    blt = chans.get("boundary_local_time") or {}
+    if blt.get("container"):
+        out.append(("boundary_local_time.container", ["blt"], 1, blt["container"]))
+    fld = chans.get("susc_field_basis") or {}
+    if fld.get("container"):
+        out.append(("susc_field_basis.container", ["susc_path_dct"], int(fld["n_ch"]) if "n_ch" in fld else len(fld["channels"]),
+                    fld["container"]))
+    return out
 
 
 def _walk(obj, path=""):
@@ -115,6 +137,11 @@ def refusals(meta, keys):
         out.append(f"compression.method 'identity' is present: {INSTRUCTION}")
     if method in RETIRED_CODECS:
         out.append(f"compression.method {method!r} is present, a retired codec: {INSTRUCTION}")
+    for where, _, _, ranges in _container_ranges(meta):
+        for i, r in enumerate(ranges):
+            if "codec" in r and r["codec"] not in CODECS:
+                out.append(f"{where}[{i}].codec {r['codec']!r} is not a registered container codec "
+                           f"({', '.join(CODECS)}): refusing the pack by that name (registry, container option `codec`)")
     for k, why in REFUSED_KEYS.items():
         if k in keys:
             out.append(f"tensor {k!r} is present ({why}): {INSTRUCTION}")
@@ -122,6 +149,55 @@ def refusals(meta, keys):
         if k.endswith(("_rle_vals", "_rle_lens", "_rle_counts")) and k not in REFUSED_KEYS:
             out.append(f"tensor {k!r} is present (the occupancy as runs on a save grid): {INSTRUCTION}")
     return out
+
+
+def _check_codec_ranges(path, meta, keys, shapes, n_w):
+    """The errors of the ranges that name `bitshuffle-zlib`: `chunk_walkers` a power of two, the stream (uint8) and the table of
+    chunk byte offsets (int64, `ceil(N_w / chunk_walkers) + 1` entries from 0 to the stream's length) present beside each
+    other, and every chunk inflating to `L * 512 * ceil(n_elements / 4096)` bytes (registry, container option `codec`)."""
+    errs = []
+    with safe_open(path, framework="numpy") as f:
+        for where, bases, n_ch, ranges in _container_ranges(meta):
+            for i, r in enumerate(ranges):
+                if r.get("codec") != "bitshuffle-zlib":
+                    continue
+                cw = r.get("chunk_walkers")
+                if not isinstance(cw, int) or cw < 1 or cw & (cw - 1):
+                    errs.append(f"{where}[{i}].chunk_walkers {cw!r} is not a power of two")
+                    continue
+                bits = int(r["bits"])
+                lane = 8 if bits <= 8 else 16
+                k0, k1 = r["bands"] if "bands" in r else r["modes"]
+                width = int(k1 - k0)
+                for base in bases:
+                    name = f"{base}_b{i}z{bits}"
+                    if name not in keys or f"{name}_chunks" not in keys:
+                        errs.append(f"{where}[{i}]: tensors {name!r} and {name + '_chunks'!r} must both be present")
+                        continue
+                    stream, table = f.get_tensor(name), f.get_tensor(f"{name}_chunks")
+                    n_chunks = -(-n_w // cw)
+                    if stream.dtype != np.uint8 or stream.ndim != 1:
+                        errs.append(f"{name} must be a uint8 vector, got {stream.dtype} {stream.shape}")
+                        continue
+                    if table.dtype != np.int64 or table.shape != (n_chunks + 1,):
+                        errs.append(f"{name}_chunks must be int64 ({n_chunks + 1},), got {table.dtype} {table.shape}")
+                        continue
+                    if table[0] != 0 or table[-1] != stream.size or np.any(np.diff(table) < 0):
+                        errs.append(f"{name}_chunks must rise from 0 to the stream's {stream.size} bytes")
+                        continue
+                    for c in range(n_chunks):
+                        rows = min(cw, n_w - c * cw)
+                        n_el = rows * n_ch * width
+                        want = lane * 512 * -(-n_el // 4096)
+                        try:
+                            got = len(zlib.decompress(stream[table[c]:table[c + 1]].tobytes()))
+                        except zlib.error as e:
+                            errs.append(f"{name} chunk {c} does not inflate: {e}")
+                            break
+                        if got != want:
+                            errs.append(f"{name} chunk {c} inflates to {got} bytes, expected {want}")
+                            break
+    return errs
 
 
 def check(path):
@@ -195,6 +271,10 @@ def check(path):
         n_w = shapes["pos_x_ends"][0]
     if n_w is not None and wp.get("n_walkers") not in (None, n_w):
         errs.append(f"walk_params.n_walkers {wp.get('n_walkers')} != N_w {n_w} of positions")
+
+    # 4b. a range stored with a codec: its chunk stream, its chunk table, and the inflated lengths
+    if n_w is not None:
+        errs.extend(_check_codec_ranges(path, meta, keys, shapes, n_w))
 
     # 5. tier flag => channels present
     env = meta.get("replay_envelope", {})
