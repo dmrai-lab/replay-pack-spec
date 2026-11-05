@@ -165,7 +165,7 @@ def _check_codec_ranges(path, meta, keys, shapes, n_w):
                     errs.append(f"{where}[{i}].chunk_walkers {cw!r} is not a power of two")
                     continue
                 bits = int(r["bits"])
-                lane = 1 if bits <= 8 else 2
+                lane = 8 if bits <= 8 else 16
                 k0, k1 = r["bands"] if "bands" in r else r["modes"]
                 width = int(k1 - k0)
                 for base in bases:
