@@ -99,7 +99,8 @@ def _container_ranges(meta):
         out.append(("boundary_local_time.container", ["blt"], 1, blt["container"]))
     fld = chans.get("susc_field_basis") or {}
     if fld.get("container"):
-        out.append(("susc_field_basis.container", ["susc_path_dct"], int(fld.get("n_ch", 12)), fld["container"]))
+        out.append(("susc_field_basis.container", ["susc_path_dct"], int(fld["n_ch"]) if "n_ch" in fld else len(fld["channels"]),
+                    fld["container"]))
     return out
 
 
