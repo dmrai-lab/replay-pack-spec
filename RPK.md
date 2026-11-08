@@ -415,6 +415,20 @@ A conformant representation or codec MUST satisfy six rules:
 
    **Inherited certification.** Packs that are blocks of one *fill* -- the same substrate, walk parameters, block `(h, m)`, codec and containers, differing only in the walkers they hold -- MAY inherit the battery measurement instead of repeating it: one or more **certifying** packs of the fill carry the measured `fidelity` (`certified: "measured"`); every other pack carries `certified: "inherited"` and `inherited_from {id, err_max, floor_max}` naming a certifying pack, reports that pack's `err_max` (whole and per family and per tier), and reads its **own** split-half `floor_max` -- and, when partitioned, its own per-voxel floors -- over the same battery in the coded domain (the phases from the stored coefficients, no path decoded). A pack whose codec parameters differ from the pack it cites is non-conformant; a pack that inherited a certificate cannot certify another; a bank MAY re-measure any pack.
 
+**Battery parameters.** A standalone pack MAY omit `fidelity.battery`. A shard that inherits its certification MUST include `fidelity.battery`, and every pack a merge combines MUST include it. When present, `fidelity.battery` MUST be an object stating the acquisition set on which `err_max` and `floor_max` were measured, never a string identifier. All seven keys below are REQUIRED inside that object; no missing parameter has an implicit default. Additional keys MAY state tier-specific measurements or extensions, consistent with the unknown-key rule (§14).
+
+| key | type and units | meaning |
+|---|---|---|
+| `bvals` | nonempty array of nonnegative numbers, s/m² | PGSE/OGSE b-values |
+| `dirs` | nonempty array of three-number vectors, dimensionless | gradient directions in stored coordinates; not necessarily normalized |
+| `ogse_periods` | array of positive integer counts, dimensionless | OGSE periods; empty if not measured |
+| `shortd_b` | nonnegative number, s/m² | short-delta b-value |
+| `shortd_deltas_frac` | array of numbers in `(0, 1]`, dimensionless | short-delta pulse durations divided by the certified duration; empty if not measured |
+| `delta_frac` | number in `(0, 1]`, dimensionless | PGSE pulse duration `delta` divided by the certified duration |
+| `Delta_frac` | number in `(0, 1]`, dimensionless | PGSE pulse separation `Delta` divided by the certified duration |
+
+The certified duration is the storage window's duration for a per-window certificate, otherwise `T_max`. Blocks of one fill MUST state the same battery, including when certification is inherited. A merge MUST refuse a shard with no battery and MUST compare all stated batteries for equality before re-reading the union's floor. Equality compares object members and values (independent of member order), including additional keys; array order matters, and no unit conversion, sorting or approximate numeric comparison is applied. A caller supplying an explicit measurement battery MAY instead re-measure the union under it and MUST state that battery in the resulting certificate.
+
 The `fidelity` object is **codec-agnostic** — it reports the replay error whatever method produced it — so it lives in the **core** metadata (§10) and is read identically by any replayer or bank; only the codec *algorithms* live in the registry. How to read it: `err_max` is the worst-case replay error over the battery, `floor_max` the irreducible MC noise floor for the same ensemble, and `within_2x_floor: true` means the loss sits below `2×` that floor (scientifically negligible).
 
 One structural rule belongs in the core because it constrains tiers, not any particular algorithm:
@@ -646,7 +660,12 @@ Metadata is a JSON object embedded in the container (§12) and validated by `sch
       "quadrature": { "positions": 2.0e-6, "local_time": 1.0e-6, "field": 3.0e-7 },   // one per channel
       "field_read": 5.0e-5 },            //   iff field_read_interval
     "within_2x_floor": true,             // err_max <= 2*floor_max -> loss is negligible
-    "battery": "...",
+    "battery": {                        // OPTIONAL for standalone packs; REQUIRED for inheritance/merge (§9.4), SI
+      "bvals": [0, 0.5e9, 1e9, 2e9, 3e9],
+      "dirs": [[0,0,1], [1,0,0], [1,0,1]],
+      "ogse_periods": [1,2,3,5], "shortd_b": 1e9,
+      "shortd_deltas_frac": [0.2,0.1,0.05,0.025],
+      "delta_frac": 0.2, "Delta_frac": 0.5 },
     "certified": "measured",             // "measured" here, or "inherited" from a certifying pack of the same fill
     "inherited_from": null,              //   then {id, err_max, floor_max} of that pack (§9.4 rule 4)
     "windows": null },                   // OPTIONAL — one certificate per storage window (§4.3); the
@@ -683,6 +702,8 @@ A pack is a **certificate**, not a black box. Two objects make its guarantees ex
 
 - **`replay_envelope`** — the *domain of validity*: which tiers, and the acquisition/field range (`b_max`, OGSE periods, `B0_list`, `max_refocusing_pulses`, …) over which the producer stands behind the pack. Its limits have two sources — what the *walk* covers (diffusion time, box size) and what a capability-narrowing codec leaves servable (§9.4 rule 5) — and a replayer treats them identically. A request inside the envelope is guaranteed; a request outside is a *known limit*, and the replayer MUST surface it as such (§13), never silently extrapolate.
 - **`fidelity`** — the *certified* error of the pack's encoding against the noise floor (§9.4, §9.5.5).
+
+The battery is the stated measurement set, not the domain of validity: `fidelity.battery` records its parameters (§9.4), while the guarantee remains `replay_envelope`. A standalone pack MAY omit `fidelity.battery`; a shard inheriting certification and every pack a merge combines MUST state it. A merge MUST refuse a shard without it. Inherited certificates and merges use the same battery equality rule of §9.4.
 
 The substrate bank (a separate service) accepts a pack by validating it against this specification (§13) and MAY re-measure `fidelity` independently.
 
@@ -754,5 +775,5 @@ A pack carries data only. Safetensors executes no code on load, and the metadata
 ## Appendix A. Minimal conformant pack (Tier C0)
 
 Arrays: `pos_x`, `pos_y`, `pos_z`, each `(N_w, K + 2)` float32.
-Metadata: `rpk_schema_version`, `id`, `walk_params{n_walkers,T_max,diffusivity,seed,block,qv}`, `compression{method:"bridge_dst",K,walker_preserving:true}`, `replay_envelope{gradient:true, ...all others false...}`, `fidelity{err_max,floor_max,terms{truncation,quadrature{positions}}}`, `license`, `citation`.
+Metadata: `rpk_schema_version`, `id`, `walk_params{n_walkers,T_max,diffusivity,seed,block,qv}`, `compression{method:"bridge_dst",K,walker_preserving:true}`, `replay_envelope{gradient:true, ...all others false...}`, `fidelity{err_max,floor_max,terms{truncation,quadrature{positions}}}` (with OPTIONAL `battery` for a standalone pack), `license`, `citation`.
 Replay: §6.1 only. This is the floor of interoperability — a walk and nothing else — and every richer pack is this plus declared channels. See `examples/`.

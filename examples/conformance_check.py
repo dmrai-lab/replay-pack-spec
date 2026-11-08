@@ -224,11 +224,13 @@ def check(path):
     # 2. metadata schema (best-effort; jsonschema optional)
     try:
         import jsonschema
-        jsonschema.validate(meta, json.load(open(SCHEMA)))
+        with open(SCHEMA) as source:
+            jsonschema.validate(meta, json.load(source))
     except ImportError:
         warns.append("jsonschema not installed; skipped full metadata schema validation")
     except Exception as e:
-        errs.append(f"metadata fails schema: {getattr(e, 'message', e)}")
+        where = '.'.join(str(part) for part in e.absolute_path) if hasattr(e, 'absolute_path') else ''
+        errs.append(f"metadata fails schema at {where or '<root>'}: {getattr(e, 'message', e)}")
 
     comp = meta.get("compression", {})
     method = comp.get("method")

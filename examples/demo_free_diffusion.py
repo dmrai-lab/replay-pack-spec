@@ -18,8 +18,13 @@ D, T, K, n_steps, N = 2.0e-9, 0.05, 128, 1000, 40000
 delta, Delta, dt_wf = 0.010, 0.040, T / 500
 gs = (0.02, 0.05, 0.10, 0.20)
 battery = [(rr.pgse_waveform(dt_wf, delta, Delta, g, [1, 0, 0])[0], dt_wf) for g in gs]
+battery_parameters = {
+    "bvals": [rr.pgse_waveform(dt_wf, delta, Delta, g, [1, 0, 0])[1] for g in gs],
+    "dirs": [[1, 0, 0]], "ogse_periods": [], "shortd_b": 0,
+    "shortd_deltas_frac": [], "delta_frac": delta / T, "Delta_frac": Delta / T,
+}
 vec, qv = wr.accumulate_bands(N, T, n_steps, D, K, seed=0)
-wr.write_pack("free_diffusion.rpk", vec, T, T / n_steps, D, K, qv, battery, seed=0,
+wr.write_pack("free_diffusion.rpk", vec, T, T / n_steps, D, K, qv, battery, battery_parameters, seed=0,
               pack_id="examples/free-diffusion")
 
 print("== conformance ==")

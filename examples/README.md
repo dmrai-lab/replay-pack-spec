@@ -21,3 +21,20 @@ python demo_free_diffusion.py
 ```
 
 Expected: `CONFORMANT ✓` and replayed signals matching `exp(-bD)` within ~`1/sqrt(N)`.
+
+## Standalone checks
+
+With the dependencies above installed, run from the repository root:
+
+```bash
+python -m unittest discover -s examples -v
+python examples/continuous_basis_check.py
+python examples/demo_free_diffusion.py
+```
+
+These checks also run in `.github/workflows/checks.yml`. The battery regression tests
+use repository-local temporary packs, require no GPU, git commands or network access,
+and can use the same command on a GPU runner. They require `jsonschema` so schema
+validation cannot silently be skipped. `fidelity.battery` is optional for standalone packs and required for inherited
+certification and merge inputs. When present it is a parameter object (§9.4),
+including SI b-values in s/m²; strings and malformed parameters fail with a named path.
