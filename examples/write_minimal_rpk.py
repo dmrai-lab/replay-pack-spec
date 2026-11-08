@@ -62,7 +62,7 @@ def certificate_terms(battery, T, K, h, m, D, qv):
     return trunc, quad
 
 
-def write_pack(path, vec, T, h, D, K, qv, battery, seed, pack_id):
+def write_pack(path, vec, T, h, D, K, qv, battery, battery_parameters, seed, pack_id):
     n_w = vec.shape[0]
     trunc, quad = certificate_terms(battery, T, K, h, 0, D, qv)
     floor = 1.0 / math.sqrt(n_w)                      # MC floor of a unit-modulus ensemble mean
@@ -88,7 +88,7 @@ def write_pack(path, vec, T, h, D, K, qv, battery, seed, pack_id):
                      "terms": {"truncation": trunc, "truncation_from": "band_variance",
                                "quadrature": {"positions": quad}},
                      "within_2x_floor": bool(trunc + quad <= 2 * floor),
-                     "battery": "PGSE along x, g = 0.02 .. 0.20 T/m, delta 10 ms, Delta 40 ms",
+                     "battery": battery_parameters,
                      "certified": "measured", "inherited_from": None},
         "provenance": {"generator": "write_minimal_rpk.py", "generator_version": "0.2",
                        "substrate": {"representation": "analytical",
@@ -108,8 +108,14 @@ if __name__ == "__main__":
     for g in (0.02, 0.05, 0.10, 0.20):
         G, _ = rr.pgse_waveform(T / 500, 0.010, 0.040, g, [1, 0, 0])
         battery.append((G, T / 500))
+    battery_parameters = {
+        "bvals": [rr.pgse_waveform(T / 500, 0.010, 0.040, g, [1, 0, 0])[1]
+                  for g in (0.02, 0.05, 0.10, 0.20)],
+        "dirs": [[1, 0, 0]], "ogse_periods": [], "shortd_b": 0,
+        "shortd_deltas_frac": [], "delta_frac": 0.010 / T, "Delta_frac": 0.040 / T,
+    }
     vec, qv = accumulate_bands(N, T, n_steps, D, K, seed=0)
-    meta = write_pack("free_diffusion.rpk", vec, T, h, D, K, qv, battery, seed=0,
+    meta = write_pack("free_diffusion.rpk", vec, T, h, D, K, qv, battery, battery_parameters, seed=0,
                       pack_id="examples/free-diffusion")
     f = meta["fidelity"]
     print(f"wrote free_diffusion.rpk  N_w={N} T={T*1e3:.0f}ms K={K} h={h*1e6:.0f}us m=0 D={D*1e9:.1f}e-9  (Tier C0)")

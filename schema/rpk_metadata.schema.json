@@ -565,8 +565,76 @@
           "description": "err_max <= 2*floor_max, i.e. the loss is below the MC noise (scientifically negligible)."
         },
         "battery": {
-          "type": "string",
-          "description": "The acquisition set over which err_max/floor_max were measured."
+          "type": "object",
+          "description": "Optional for standalone packs; required for inherited certification and merge inputs: acquisition set over which err_max/floor_max were measured, stated by parameters, not a name. All seven reference parameters are required; additional keys are allowed for tier-specific measurements and forward-compatible extensions (SPEC sections 9.4, 11, 14).",
+          "required": [
+            "bvals",
+            "dirs",
+            "ogse_periods",
+            "shortd_b",
+            "shortd_deltas_frac",
+            "delta_frac",
+            "Delta_frac"
+          ],
+          "properties": {
+            "bvals": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "description": "PGSE/OGSE b-values, SI s/m^2."
+            },
+            "dirs": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "description": "Gradient direction vectors in stored coordinates, dimensionless; need not be unit vectors."
+            },
+            "ogse_periods": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "OGSE period counts (dimensionless); empty when OGSE is not measured."
+            },
+            "shortd_b": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Short-delta b-value, SI s/m^2."
+            },
+            "shortd_deltas_frac": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "description": "Short-delta pulse durations as dimensionless fractions of the certified duration; empty when short-delta is not measured."
+            },
+            "delta_frac": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "PGSE pulse duration delta as a dimensionless fraction of the certified duration."
+            },
+            "Delta_frac": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "PGSE pulse separation Delta as a dimensionless fraction of the certified duration."
+            }
+          },
+          "additionalProperties": true
         },
         "certified": {
           "type": "string",
