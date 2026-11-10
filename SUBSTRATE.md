@@ -102,6 +102,7 @@ An array. Each wall:
 | `permeability` | `{in_to_out, out_to_in}` | κ (m/s) per crossing direction; `0` is impermeable. Unequal values are a pump, not passive exchange, and MUST be declared as such in `description` |
 | `surface_relaxivity` | `{inside, outside}` | ρ₂ (m/s) seen from each side |
 | `mt_reactivity` | `{inside, outside}` | κ_MT (m/s) per side, `0` off |
+| `mt_dwell` | `{inside, outside}` or absent | the MT bound pool's mean dwell τ_b (s) per side: present exactly when a side has a non-zero `mt_reactivity`, positive on each such side and `0` on the others |
 
 `surface.kind` is one of `sphere`, `cylinder`, `ellipsoid`, `plane`, `swept_polyline`, `sphere_union`, `mesh`,
 `label_volume`, with:
@@ -214,7 +215,8 @@ what was done to the source: dropped surfaces, box choice, unit scale, g-ratio m
    that would change the pool otherwise (`RPK.md` §8.5).
 2. A wall hit applies, from the side hit, `surface_relaxivity` as a boundary local time increment and
    `mt_reactivity` as a binding probability; a crossing decision uses `permeability` for the direction
-   of travel. A wall with `outside_pool: null` reflects always.
+   of travel. A wall with `outside_pool: null` reflects always. A walker bound on a side stays bound for
+   an exponential dwell of mean `mt_dwell` on that side (the release rate `1 / mt_dwell`), then walks on.
 3. A `periodic` face wraps the position (the stored trajectory stays continuous); a `reflect` face is
    a specular wall of the domain; an `open` face does nothing.
 4. The pool's `D` sets the step length of a walker in it; unequal `D` across a permeable wall is a
@@ -222,9 +224,9 @@ what was done to the source: dropped surfaces, box choice, unit scale, g-ratio m
 5. The Field tier's basis is computed from the occupancy of every field-source pool and its director,
    on the domain box (periodic where the domain is): geometry only. `chi_iso`, `chi_aniso`, `B0` and
    its direction are replay knobs.
-6. `T2`, `T1`, `water_fraction`-as-weight, `surface_relaxivity`, `permeability`, `mt_reactivity` and
-   `susceptibility` values are **nominal** in the spec. Of these only `permeability`, `mt_reactivity`
-   (when walked emergently), `water_fraction` and `D` shape the walk; the rest are replay knobs and
+6. `T2`, `T1`, `water_fraction`-as-weight, `surface_relaxivity`, `permeability`, `mt_reactivity`, `mt_dwell` and
+   `susceptibility` values are **nominal** in the spec. Of these only `permeability`, `mt_reactivity` and
+   `mt_dwell` (when walked emergently), `water_fraction` and `D` shape the walk; the rest are replay knobs and
    MUST NOT appear in a pack as values (§6).
 
 ## 5. Request and realisation
