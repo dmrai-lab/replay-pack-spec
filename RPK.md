@@ -527,7 +527,7 @@ the sum of the squared increments over the walk, averaged over the walkers. The 
 | `field` | C3, `F(t) = ∫ b dt` | s² | one `Σ (b dt_f)²` per component of `susc_field_basis`, in the order of `compression.channels.susc_field_basis.channels`, over the field reads (below); smooth and small. Present iff `susc_field_basis` is |
 | `field_increments` | C3, the read series `b_i` | — (dimensionless²) | one `Σ (b_{i+1} − b_i)²` per component of `susc_field_basis`, same order, over the field reads; it sets `fidelity.terms.field_read` (below). Present iff `susc_field_basis` is |
 
-*The relative figure.* The block quadrature perturbs band `k` of a channel by an error independent of the others, whose variance is at most
+*The relative figure.* The block quadrature perturbs band `k` of a channel by an error whose variance is at most
 
 ```
 rel(m, ω_k h) · ( T / (π k)² ) · QV(I),      ω_k = π k / T,
@@ -543,15 +543,17 @@ with `T / (π k)² · QV` the band's variance under the free bridge (§9.5.6, wh
 | 2 | `(ωh)⁶ / 16128` |
 | 3 | `(ωh)⁸ / 1327104` |
 
+For the positions (C0) this bound holds for a walk that is a reversible diffusion started at its equilibrium, with reflecting or symmetrically permeable walls, at `QV = 2 D T` with `D` its largest local diffusivity; the walk's recorded `QV` (§9.5.5, `walk_params.qv`) estimates that figure. The errors of different bands are uncorrelated for free diffusion; for a restricted walk they need not be. For the contact (C2) and field (C3) channels the figure is the producer's, at the recorded `QV_c`: no bound is stated for them.
+
 It is an **absolute** error, not a fraction of the band's own variance: a restricted walk's high bands are far smaller than the free value while the quadrature error is not, so the same error is a large fraction of a restricted band and below the table in absolute terms.
 
-*The quadrature term, per channel.* A measurement's phase (or log-weight) is `Σ_c Σ_k g_{c,k} β_{c,k}` plus endpoint terms, which are exact, with `g_{c,k}` the weight of the replay (§6) on band `k` of channel `c`: for C0, `γ Ĝ_k` per axis (§9.5.3); for C2, `ρ/D` times the band's projection of the acquisition's contact window; for C3, `γ B0 χ` times the band's projection of the gate. Block quadrature adds to that measurement an independent term of variance at most
+*The quadrature term, per channel.* A measurement's phase (or log-weight) is `Σ_c Σ_k g_{c,k} β_{c,k}` plus endpoint terms, which are exact, with `g_{c,k}` the weight of the replay (§6) on band `k` of channel `c`: for C0, `γ Ĝ_k` per axis (§9.5.3); for C2, `ρ/D` times the band's projection of the acquisition's contact window; for C3, `γ B0 χ` times the band's projection of the gate. Block quadrature adds to that measurement a term of variance at most
 
 ```
 v_c = Σ_k g_{c,k}² · rel(m, ω_k h) · ( T / (π k)² ) · QV_c ,
 ```
 
-and the signal is biased by at most `½ v_c` times `|S|`. On a free walk (C0) this is at most `½ · rel(m, π K h / T) · 2 b D`, with `b` the b-value (s·m⁻²) of the measurement and `D` the largest free diffusivity of the walk: it does not depend on the walker count or on the substrate, only on the band and on the `b` the pack can reach (`replay_envelope.acquisition.b_max`). The certificate carries `v_c / 2` per channel (below). The quadrature term does not include the rounding of the accumulation, which a producer with `precision = "float32"` MUST measure and carry in `err_max` as the term `rounding` (below).
+(for the positions, under the conditions of the relative figure above). The term is correlated with the phase it is added to, so it does not bias the signal by `½ v_c` times `|S|`: with `φ` the phase and `δ` the term, the replayed signal differs from the signal by `|E[e^{iφ}(e^{−iδ} − 1)]| ≤ E|δ| ≤ sqrt(E δ²)`, so **for the positions the signal changes by at most `sqrt(v_c)`**, in units of the unrelaxed signal. On a free walk (C0) the phases are Gaussian and the change is exact: the signal is multiplied by `exp(Δ)`, `Δ = ½ Σ_k g_{c,k}² · d(m, ω_k h) · (T / (π k)²) · 2 D T`, with `d(m, x) = 1 − (1/h) ∫_{−h/2}^{h/2} |Σ_{j≤m} (iωτ)^j / j!|² dτ` at `x = ωh` the fraction of a band's variance the block table loses (`0`, `−x²/12`, `−x⁴/320`, `x⁴/960 − x⁶/16128` for `m` = 0, 1, 2, 3). On a free walk `v_c / 2` is at most `½ · rel(m, π K h / T) · 2 b D`, with `b` the b-value (s·m⁻²) of the measurement and `D` the largest free diffusivity of the walk: it does not depend on the walker count or on the substrate, only on the band and on the `b` the pack can reach (`replay_envelope.acquisition.b_max`). The certificate carries `v_c / 2` per channel (below): half the variance of the term, not the signal's change. The quadrature term does not include the rounding of the accumulation, which a producer with `precision = "float32"` MUST measure and carry in `err_max` as the term `rounding` (below).
 
 *The field read.* The field channel is accumulated at the walk's own position, at the step, and is never read from the stored bands: the bands are a band-limited path, and a read of a micron-scale field along them is a quadrature at the band's resolution. `walk_params.field_read_interval = dt_f` (s) records the interval between the walk's reads of the field; it is REQUIRED iff `susc_field_basis` is present. Between reads the walker moves `sqrt(2 D dt_f)`, and the trapezoid of two consecutive reads, `(b_i + b_{i+1}) dt_f / 2`, misses the path's deviation from the chord. Over a walk that deviation adds to the field phase an independent term whose variance is set by the field the walker ACTUALLY crossed, the quadratic variation of the read series, which the walk records per component in `walk_params.qv.field_increments`:
 
@@ -567,7 +569,7 @@ with `QV_Δb` combined over the channel's components as the square of the summed
 | key | meaning |
 |---|---|
 | `truncation` | the bands beyond `K`. Walk-free, from the free-bridge band variances of §9.5.6 weighted by the battery waveforms' projections; or measured on a pilot subset as `K` against `2K` bands accumulated in the same walk, which `truncation_from` (`"band_variance"` or `"pilot"`, OPTIONAL) records. REQUIRED |
-| `quadrature` | an object with one number per channel, `½ v_c`: `positions` always, `local_time` iff C2, `field` iff the field channel is present. Each is `½ Σ_k g_{c,k}² rel(m, ω_k h) (T/(π k)²) QV_c` with the `QV_c` of `walk_params.qv`. REQUIRED |
+| `quadrature` | an object with one number per channel, `½ v_c`, half the variance of the quadrature's phase term (the signal's change is at most `sqrt(v_c)` for the positions, §9.5.5 above, not this number): `positions` always, `local_time` iff C2, `field` iff the field channel is present. Each is `½ Σ_k g_{c,k}² rel(m, ω_k h) (T/(π k)²) QV_c` with the `QV_c` of `walk_params.qv`. REQUIRED |
 | `field_read` | `½ v_read` of the field read above, from `walk_params.qv.field_increments` at `walk_params.field_read_interval`. REQUIRED iff `walk_params.field_read_interval` is present |
 | `rounding` | the rounding of the accumulation across blocks: with `r` the measured relative residual of the chain (the producer's `k = 0` mode against the exact displacement, the largest over the walkers), a phase error correlated with the phase, bounded by `r · sqrt(2 · b_max · D)` with `b_max` the battery's largest b-value and `D` the largest free diffusivity. REQUIRED iff `walk_params.block.precision` is `"float32"` |
 
