@@ -543,7 +543,7 @@ with `T / (π k)² · QV` the band's variance under the free bridge (§9.5.6, wh
 | 2 | `(ωh)⁶ / 16128` |
 | 3 | `(ωh)⁸ / 1327104` |
 
-For the positions (C0) this bound holds for a walk that is a reversible diffusion started at its equilibrium, with reflecting or symmetrically permeable walls, at `QV = 2 D T` with `D` its largest local diffusivity; the walk's recorded `QV` (§9.5.5, `walk_params.qv`) estimates that figure. The errors of different bands are uncorrelated for free diffusion; for a restricted walk they need not be. For the contact (C2) and field (C3) channels the figure is the producer's, at the recorded `QV_c`: no bound is stated for them.
+For the positions (C0) this bound holds for a walk that is a reversible diffusion in a bounded domain started at its equilibrium, with reflecting or symmetrically permeable walls, at `QV = 2 D T` with `D` its largest local diffusivity (free diffusion is covered by the exact statement below; a periodic medium is not covered by this statement); the walk's recorded `QV` (§9.5.5, `walk_params.qv`) estimates that figure. The errors of different bands are uncorrelated for free diffusion; for a restricted walk they need not be. For the contact (C2) and field (C3) channels the figure is the producer's, at the recorded `QV_c`: no bound is stated for them.
 
 It is an **absolute** error, not a fraction of the band's own variance: a restricted walk's high bands are far smaller than the free value while the quadrature error is not, so the same error is a large fraction of a restricted band and below the table in absolute terms.
 
