@@ -508,7 +508,7 @@
         },
         "terms": {
           "type": "object",
-          "description": "The certificate's terms (SPEC \u00a79.5.5), in the units of err_max; each bounds the replay error it names over the battery, except quadrature, which is half a variance and not the signal's change. REQUIRED.",
+          "description": "The certificate's terms (SPEC \u00a79.5.5), in the units of err_max; what each term states is in SPEC \u00a79.5.5 (quadrature: half of a bound on a variance, not the signal's change). REQUIRED.",
           "required": [
             "truncation",
             "quadrature"
@@ -524,7 +524,7 @@
               "required": [
                 "positions"
               ],
-              "description": "The block quadrature of walk_params.block, one figure per channel, half the variance of the quadrature's phase term at the recorded QV_c (not a bound on the signal's change; SPEC \u00a79.5.5): 0.5 * sum_k g_k^2 rel(m, omega_k h) (T/(pi k)^2) QV_c, with QV_c from walk_params.qv and rel(m, x) = x^(2(m+1)) / (((m+1)!)^2 (2m+3) 4^(m+1)).",
+              "description": "The block quadrature of walk_params.block, one figure per channel at the recorded QV_c: for the positions an estimate of half the bound on the variance of the quadrature's phase term (not a bound on the signal's change; SPEC \u00a79.5.5): 0.5 * sum_k g_k^2 rel(m, omega_k h) (T/(pi k)^2) QV_c, with QV_c from walk_params.qv and rel(m, x) = x^(2(m+1)) / (((m+1)!)^2 (2m+3) 4^(m+1)).",
               "properties": {
                 "positions": {
                   "type": "number",

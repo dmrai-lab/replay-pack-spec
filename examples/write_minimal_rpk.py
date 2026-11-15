@@ -47,7 +47,7 @@ def accumulate_bands(n_walkers, T, n_steps, D, K, seed=0, batch=2000):
 
 
 def certificate_terms(battery, T, K, h, m, D, qv):
-    """SPEC §9.5.5: the largest truncation bound and quadrature term (half a variance) over a battery of (G, dt_wf)."""
+    """SPEC §9.5.5: the largest truncation bound and quadrature term (half of a variance bound) over a battery of (G, dt_wf)."""
     k_hi = np.arange(K + 1, 20001)                    # the bands beyond K, summed far enough
     k_lo = np.arange(1, K + 1)
     trunc = quad = 0.0
