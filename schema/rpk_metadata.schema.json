@@ -494,7 +494,7 @@
     },
     "fidelity": {
       "type": "object",
-      "description": "REQUIRED (SPEC \u00a79.4 rule 4). Codec-agnostic trust certificate: the replay error against a reference replay of the same acquisition, and its bounded terms. Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
+      "description": "REQUIRED (SPEC \u00a79.4 rule 4). Codec-agnostic trust certificate: the replay error against a reference replay of the same acquisition, and its terms (SPEC \u00a79.5.5). Lives in the core metadata (not the registry) because it is read identically by any replayer or bank.",
       "properties": {
         "err_max": {
           "type": "number",
@@ -508,7 +508,7 @@
         },
         "terms": {
           "type": "object",
-          "description": "The certificate's terms (SPEC \u00a79.5.5), in the units of err_max; each bounds the replay error it names over the battery, except quadrature and field_read, which are half a variance and not the signal's change. REQUIRED.",
+          "description": "The certificate's terms (SPEC \u00a79.5.5), in the units of err_max; each bounds the replay error it names over the battery, except quadrature, which is half a variance and not the signal's change. REQUIRED.",
           "required": [
             "truncation",
             "quadrature"
