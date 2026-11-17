@@ -111,7 +111,7 @@ A custom `x_` channel (§5.2) MUST declare its own unit in metadata.
 | Knob | Symbol | Unit | Used in |
 |---|---|---|---|
 | gradient waveform | `G(t)` | tesla·metre⁻¹ (T·m⁻¹) | §6.1 |
-| gyromagnetic ratio | `γ` | rad·s⁻¹·T⁻¹ (¹H = 2.675 2219 × 10⁸) | §6.1, §6.4 |
+| gyromagnetic ratio | `γ` | rad·s⁻¹·T⁻¹ (¹H = 267.513 × 10⁶, i.e. 42.576 MHz·T⁻¹; the one value of this specification, `ACQUISITION.md` §4.1) | §6.1, §6.4 |
 | static field | `B₀` | tesla (T) | §6.4 |
 | **volume susceptibility** | `χ`, `Δχ` | **dimensionless, SI — NOT CGS (differ by 4π)** | §6.4 |
 | orientation, azimuth | `θ`, `α` | radian (rad) | §6.4 |

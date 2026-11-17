@@ -12,7 +12,7 @@ import json
 import numpy as np
 from safetensors import safe_open
 
-GAMMA = 2.6751525e8  # proton gyromagnetic ratio, rad s^-1 T^-1
+GAMMA = 267.513e6  # proton gyromagnetic ratio, rad s^-1 T^-1 (RPK.md 4.1, ACQUISITION.md 4.1)
 
 
 def load_rpk(path):
